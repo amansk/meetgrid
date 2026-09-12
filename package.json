@@ -10,6 +10,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply meetgrid-db --remote",
     "typecheck": "tsc --noEmit",
     "test:dst": "npx --yes tsx scripts/test-dst.ts",
+    "test:expiry": "npx --yes tsx scripts/test-expiry.ts",
     "test:calendar": "npx --yes tsx scripts/test-calendar.ts",
     "test": "npm run test:dst && npm run test:calendar",
     "mcp:build": "npm run build --prefix mcp",

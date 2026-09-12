@@ -1,10 +1,21 @@
 const ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
+/**
+ * Rejection sampling rather than a modulo: 256 is not a multiple of 62, so
+ * `byte % 62` would make the first eight characters of the alphabet a quarter
+ * more likely than the rest. That barely mattered across twelve characters; it
+ * matters at four, where the id is the only thing guarding a poll.
+ */
 export function generateId(length = 12): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  const limit = Math.floor(256 / ID_ALPHABET.length) * ID_ALPHABET.length;
   let id = '';
-  for (let i = 0; i < length; i++) {
-    id += ID_ALPHABET[bytes[i] % ID_ALPHABET.length];
+  while (id.length < length) {
+    const bytes = crypto.getRandomValues(new Uint8Array(length - id.length + 8));
+    for (const byte of bytes) {
+      if (byte >= limit) continue;
+      id += ID_ALPHABET[byte % ID_ALPHABET.length];
+      if (id.length === length) break;
+    }
   }
   return id;
 }

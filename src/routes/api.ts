@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import {
   closePoll,
-  deletePoll,
   deleteSlots,
   getPoll,
   getRespondents,
@@ -22,6 +21,7 @@ import {
   resolveCreatePollId,
 } from '../lib/validate';
 import { generateId, generateSecret, hashSecret, verifySecret } from '../lib/crypto';
+import { generateUniquePollId } from '../lib/expiry';
 import { buildPollView } from '../lib/poll-view';
 import { clientKey, checkRateLimit } from '../lib/rate-limit';
 import { buildExplicitSlots, defaultPollDuration, generatedSlotsToLocal } from '../lib/explicit-slots';
@@ -135,7 +135,7 @@ api.post('/polls', async (c) => {
     }
     pollId = idResult.pollId;
   } else {
-    pollId = generateId(12);
+    pollId = await generateUniquePollId(c.env.DB);
   }
   const organizerSecret = generateSecret();
   const organizerSecretHash = await hashSecret(organizerSecret);
@@ -384,51 +384,6 @@ api.post('/polls/:id/close', async (c) => {
   await closePoll(c.env.DB, pollId);
   const view = await loadPublicPoll(c.env.DB, pollId);
   return c.json({ ok: true, poll: view });
-});
-
-/**
- * Permanent delete. The organizer secret is required because the poll id is the
- * participant link — anyone who was invited holds it, and deleting on the id
- * alone would let any of them destroy everyone's votes.
- *
- * This is a hard delete: the poll, its slots, its respondents and every vote are
- * removed, and there is no restore path. A soft
- * delete would keep the rows recoverable, but that needs a schema change and
- * filtering on every read, and the point of the tool is that data actually goes
- * away when somebody asks for it to.
- */
-api.post('/polls/:id/delete', async (c) => {
-  if (!(await checkRateLimit(c.env, clientKey(c.req.raw)))) {
-    return jsonError('Rate limit exceeded', 429);
-  }
-
-  const pollId = pollIdParam(c.req.param('id'));
-  if (!pollId) return jsonError('Poll not found', 404);
-  let body: { organizer_secret?: string };
-  try {
-    body = await c.req.json();
-  } catch {
-    return jsonError('Invalid JSON body');
-  }
-
-  if (!body.organizer_secret) return jsonError('organizer_secret is required');
-
-  const auth = await verifyOrganizer(c.env.DB, pollId, body.organizer_secret);
-  if (auth.error) return jsonError(auth.error, auth.status);
-
-  const respondents = await getRespondents(c.env.DB, pollId);
-  const slots = await getSlots(c.env.DB, pollId);
-  await deletePoll(c.env.DB, pollId);
-
-  return c.json({
-    ok: true,
-    deleted: {
-      poll_id: pollId,
-      title: auth.poll!.title,
-      slots: slots.length,
-      respondents: respondents.length,
-    },
-  });
 });
 
 api.post('/polls/:id/slots', async (c) => {

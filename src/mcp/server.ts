@@ -258,7 +258,7 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
     'poll_close',
     [
       'Stop a poll taking new or changed responses. Everything stays readable — results, votes, the decision — which makes this the safe way to finish with a poll.',
-      'There is no reopen call, so it is one-way. Requires the organizer secret. Reach for poll_delete only when the data itself should be destroyed.',
+      'There is no reopen call, so it is one-way. Requires the organizer secret. Nothing deletes a poll on request: polls are removed automatically 30 days after the last thing that happens to them.',
     ].join('\n'),
     {
       poll_id: z.string().describe(POLL_ID_DESC),
@@ -266,26 +266,6 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
     },
     async ({ poll_id, organizer_secret }) => {
       const result = await client.closePoll(poll_id, organizer_secret);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
-    }
-  );
-
-  server.tool(
-    'poll_delete',
-    [
-      'Delete a poll for good. IRREVERSIBLE: the poll, its time slots, every respondent and every vote are erased. There is no undo, no restore call and no copy kept. Afterwards the API returns 404 for that poll, the poll and results pages say it was not found, and a custom slug frees up for somebody else to claim.',
-      '',
-      'Requires the organizer secret. The poll id alone is not enough, deliberately: the id IS the participant link, which every invitee holds, and deleting on it would let any of them destroy everyone’s votes.',
-      'To stop new responses but keep the results, use poll_close instead. Use this one when the data should actually go — a test poll, or a poll somebody wants erased.',
-    ].join('\n'),
-    {
-      poll_id: z.string().describe(POLL_ID_DESC),
-      organizer_secret: z.string().describe(ORGANIZER_SECRET_DESC),
-    },
-    async ({ poll_id, organizer_secret }) => {
-      const result = await client.deletePoll(poll_id, organizer_secret);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };

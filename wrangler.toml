@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2025-03-01"
 workers_dev = true
 
+# Daily retention sweep — see scheduled() in src/index.ts.
+[triggers]
+crons = ["0 4 * * *"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "meetgrid-db"

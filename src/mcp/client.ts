@@ -87,11 +87,4 @@ export class MeetgridClient {
       body: JSON.stringify({ organizer_secret: organizerSecret }),
     });
   }
-
-  deletePoll(pollId: string, organizerSecret: string) {
-    return this.request(`/api/polls/${pollId}/delete`, {
-      method: 'POST',
-      body: JSON.stringify({ organizer_secret: organizerSecret }),
-    });
-  }
 }
