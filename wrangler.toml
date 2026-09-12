@@ -1,12 +1,17 @@
 name = "meetgrid"
 main = "src/index.ts"
 compatibility_date = "2025-03-01"
+workers_dev = true
 
 [[d1_databases]]
 binding = "DB"
 database_name = "meetgrid-db"
-database_id = "local-dev-placeholder"
+database_id = "684953af-8c63-4aed-af58-526cfbb791f3"
 migrations_dir = "migrations"
+
+[[routes]]
+pattern = "meetgrid.amandeep.app"
+custom_domain = true
 
 [vars]
 RATE_LIMIT_WINDOW_SECONDS = "60"
