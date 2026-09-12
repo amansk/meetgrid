@@ -1,4 +1,4 @@
-import { formatSlotLabel } from './timezone';
+import { formatSlotLabelInZone } from './timezone';
 import type { PollRow, RespondentRow, SlotRow, VoteRow } from '../types';
 
 export interface PublicSlot {
@@ -54,7 +54,7 @@ export function buildPollView(
     id: s.id,
     start_utc: s.start_utc,
     end_utc: s.end_utc,
-    label: formatSlotLabel(s.start_utc, s.end_utc, poll.timezone),
+    label: formatSlotLabelInZone(s.start_utc, s.end_utc, poll.timezone),
     yes_count: yesBySlot.get(s.id) ?? 0,
     no_count: noBySlot.get(s.id) ?? 0,
     sort_order: s.sort_order,
