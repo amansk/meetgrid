@@ -448,8 +448,7 @@ async function loadPoll() {
   return poll;
 }
 
-document.getElementById('respond-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
+async function submitResponse(allowDuplicateName) {
   document.getElementById('alert').classList.add('hidden');
 
   const slotVotes = Object.entries(votes)
@@ -468,6 +467,7 @@ document.getElementById('respond-form').addEventListener('submit', async (e) => 
     name: document.getElementById('name').value.trim(),
     edit_token: editToken || undefined,
     votes: slotVotes,
+    allow_duplicate_name: allowDuplicateName || undefined,
   };
 
   try {
@@ -477,7 +477,14 @@ document.getElementById('respond-form').addEventListener('submit', async (e) => 
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to submit');
+    if (!res.ok) {
+      if (data.code === 'duplicate_name') {
+        showDuplicateName(data.error);
+        btn.disabled = false;
+        return;
+      }
+      throw new Error(data.error || 'Failed to submit');
+    }
 
     editToken = data.edit_token;
     setCookie('meetgrid_edit_' + POLL_ID, editToken);
@@ -498,6 +505,30 @@ document.getElementById('respond-form').addEventListener('submit', async (e) => 
     showError(err.message);
     btn.disabled = false;
   }
+}
+
+function showDuplicateName(message) {
+  const el = document.getElementById('alert');
+  el.textContent = '';
+  const p = document.createElement('p');
+  p.className = 'alert-text';
+  p.textContent = message;
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.className = 'secondary';
+  again.textContent = 'Add me anyway as a separate person';
+  again.addEventListener('click', () => {
+    el.classList.add('hidden');
+    submitResponse(true);
+  });
+  el.appendChild(p);
+  el.appendChild(again);
+  el.classList.remove('hidden');
+}
+
+document.getElementById('respond-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  submitResponse(false);
 });
 
 document.getElementById('copy-edit').addEventListener('click', () => {
@@ -544,7 +575,7 @@ pages.get('/p/:id/results', (c) => {
   <ol class="rank-list" id="ranked"></ol>
 
   <div class="section-title">Heatmap</div>
-  <div style="overflow-x:auto" id="heatmap-wrap"></div>
+  <div class="table-scroll" id="heatmap-wrap"></div>
 
   <div id="organizer-actions" class="hidden">
     <div class="section-title">Pick final time</div>
@@ -593,6 +624,15 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// Column headers keep the date: several slots share a time of day, and a bare
+// "6:00 PM – 8:00 PM" repeated across a week names no column at all.
+function slotHeader(label) {
+  const parts = String(label).split(' \u00b7 ');
+  if (parts.length < 2) return '<span class="col-when">' + escapeHtml(label) + '</span>';
+  return '<span class="col-date">' + escapeHtml(parts[0]) + '</span>' +
+    '<span class="col-time">' + escapeHtml(parts.slice(1).join(' \u00b7 ')) + '</span>';
+}
+
 function renderResults(poll) {
   pollData = poll;
   document.getElementById('poll-title').textContent = poll.title;
@@ -605,27 +645,36 @@ function renderResults(poll) {
   const maxYes = Math.max(0, ...poll.slots.map(s => s.yes_count));
 
   const ranked = document.getElementById('ranked');
-  ranked.innerHTML = poll.ranked_slot_ids.map(id => {
+  ranked.innerHTML = poll.ranked_slot_ids.map((id, i) => {
     const s = slotMap[id];
     const chosen = poll.chosen_slot_id === id ? ' chosen' : '';
-    return '<li class="rank-item' + chosen + '"><span>' + escapeHtml(s.label) + '</span><strong>' + s.yes_count + ' yes</strong></li>';
+    const lead = i === 0 && !poll.chosen_slot_id && s.yes_count > 0 ? ' leader' : '';
+    return '<li class="rank-item' + chosen + lead + '">' +
+      '<span class="rank-when">' + escapeHtml(s.label) + '</span>' +
+      '<span class="tally">' +
+        '<span class="tally-yes">' + s.yes_count + ' yes</span>' +
+        (s.no_count ? '<span class="tally-no">' + s.no_count + ' no</span>' : '') +
+      '</span></li>';
   }).join('');
 
   let table = '<table class="results-table"><thead><tr><th>Person</th>';
-  poll.slots.forEach(s => { table += '<th>' + escapeHtml(s.label.split(' · ')[1] || s.label) + '</th>'; });
+  poll.slots.forEach(s => { table += '<th>' + slotHeader(s.label) + '</th>'; });
   table += '</tr></thead><tbody>';
   poll.responses.forEach(r => {
     table += '<tr><td>' + escapeHtml(r.name) + '</td>';
     poll.slots.forEach(s => {
       const v = r.votes[s.id];
-      const cell = v === true ? '✓' : v === false ? '✗' : '–';
+      const cell = v === true
+        ? '<span class="mark-yes">\u2713</span>'
+        : v === false ? '<span class="mark-no">\u2717</span>' : '<span class="mark-none">\u2013</span>';
       table += '<td>' + cell + '</td>';
     });
     table += '</tr>';
   });
-  table += '<tr><td><strong>Yes total</strong></td>';
+  table += '<tr class="totals"><td><strong>Yes total</strong></td>';
   poll.slots.forEach(s => {
-    table += '<td class="' + heatClass(s.yes_count, maxYes) + '"><strong>' + s.yes_count + '</strong></td>';
+    table += '<td class="' + heatClass(s.yes_count, maxYes) + '"><strong>' + s.yes_count + '</strong>' +
+      (s.no_count ? '<span class="cell-no">' + s.no_count + ' no</span>' : '') + '</td>';
   });
   table += '</tr></tbody></table>';
   document.getElementById('heatmap-wrap').innerHTML = table;
@@ -634,9 +683,15 @@ function renderResults(poll) {
     document.getElementById('organizer-panel').classList.remove('hidden');
     document.getElementById('organizer-actions').classList.remove('hidden');
     const sel = document.getElementById('chosen-slot');
-    sel.innerHTML = poll.slots.map(s =>
-      '<option value="' + s.id + '"' + (poll.chosen_slot_id === s.id ? ' selected' : '') + '>' + escapeHtml(s.label) + ' (' + s.yes_count + ' yes)</option>'
-    ).join('');
+    // Offer slots best-first, so the default selection is the slot the poll
+    // actually favours rather than whichever one happens to be earliest.
+    sel.innerHTML = poll.ranked_slot_ids.map((id, i) => {
+      const s = slotMap[id];
+      const selected = poll.chosen_slot_id ? poll.chosen_slot_id === s.id : i === 0;
+      return '<option value="' + s.id + '"' + (selected ? ' selected' : '') + '>' +
+        escapeHtml(s.label) + ' — ' + s.yes_count + ' yes' + (s.no_count ? ', ' + s.no_count + ' no' : '') +
+        '</option>';
+    }).join('');
   }
 }
 

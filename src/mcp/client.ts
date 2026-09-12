@@ -52,6 +52,7 @@ export class MeetgridClient {
       name: string;
       edit_token?: string;
       votes: Array<{ slot_id: string; yes: boolean }>;
+      allow_duplicate_name?: boolean;
     }
   ) {
     return this.request(`/api/polls/${pollId}/respond`, {

@@ -31,8 +31,8 @@ import type { GeneratedSlot } from '../lib/slots';
 
 const api = new Hono<{ Bindings: Env }>();
 
-function jsonError(message: string, status = 400) {
-  return Response.json({ error: message }, { status });
+function jsonError(message: string, status = 400, code?: string) {
+  return Response.json(code ? { error: message, code } : { error: message }, { status });
 }
 
 function pollIdParam(raw: string): string | null {
@@ -289,6 +289,24 @@ api.post('/polls/:id/respond', async (c) => {
     editToken = body.edit_token;
     await updateRespondentName(c.env.DB, respondentId, body.name.trim(), now);
   } else {
+    // No edit token: a name already on this poll is almost always the same person
+    // responding again from a second device or after clearing cookies, and silently
+    // adding a second respondent double-counts them in every tally. Refuse by
+    // default and tell them how to proceed. We deliberately do NOT merge into the
+    // existing respondent: without their edit token that would let anyone with the
+    // poll link overwrite someone else's votes by typing their name.
+    if (!body.allow_duplicate_name) {
+      const existing = await getRespondents(c.env.DB, pollId);
+      const wanted = body.name.trim().toLocaleLowerCase();
+      if (existing.some((r) => r.name.trim().toLocaleLowerCase() === wanted)) {
+        return jsonError(
+          `"${body.name.trim()}" has already responded to this poll. Open your edit link to change that response, or add something to your name if you are a different person.`,
+          409,
+          'duplicate_name'
+        );
+      }
+    }
+
     respondentId = generateId();
     editToken = generateSecret();
     const editTokenHash = await hashSecret(editToken);

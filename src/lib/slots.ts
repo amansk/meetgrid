@@ -25,13 +25,16 @@ export interface SlotGenerationInput {
   weekdays?: number[];
 }
 
-function isValidGeneratedSlot(
-  slot: GeneratedSlot,
-  durationMinutes: number
-): boolean {
-  if (slot.start_utc >= slot.end_utc) return false;
-  const actual = slotDurationMinutes(slot.start_utc, slot.end_utc);
-  return Math.abs(actual - durationMinutes) < 0.001;
+/**
+ * A generated slot is valid when both local endpoints exist in the timezone and
+ * run forwards. Elapsed time may differ from the nominal duration on a DST
+ * fall-back day — 1:00–2:00 AM is two real hours when the clocks go back — and
+ * that slot is still the one the organizer asked for, so it is kept. Times that
+ * do not exist at all (spring-forward gap) are dropped earlier, when
+ * localDateTimeToUtcIso returns null.
+ */
+function isValidGeneratedSlot(slot: GeneratedSlot): boolean {
+  return slot.start_utc < slot.end_utc;
 }
 
 export function generateSlots(input: SlotGenerationInput): GeneratedSlot[] {
@@ -77,7 +80,7 @@ export function generateSlots(input: SlotGenerationInput): GeneratedSlot[] {
           end_utc: endUtc,
           sort_order: sortOrder,
         };
-        if (!isValidGeneratedSlot(candidate, duration_minutes)) continue;
+        if (!isValidGeneratedSlot(candidate)) continue;
 
         candidate.sort_order = sortOrder++;
         slots.push(candidate);
@@ -103,7 +106,12 @@ export function mergeExtraSlots(
       end_utc: extra.end_utc,
       sort_order: sortOrder++,
     };
-    if (durationMinutes !== undefined && !isValidGeneratedSlot(candidate, durationMinutes)) {
+    if (!isValidGeneratedSlot(candidate)) continue;
+    if (
+      durationMinutes !== undefined &&
+      Math.abs(slotDurationMinutes(candidate.start_utc, candidate.end_utc) - durationMinutes) >=
+        0.001
+    ) {
       continue;
     }
     merged.push(candidate);

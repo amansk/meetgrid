@@ -116,12 +116,19 @@ export function createMeetgridMcpServer(apiBaseUrl: string): McpServer {
           })
         )
         .describe('Yes/no votes per slot'),
+      allow_duplicate_name: z
+        .boolean()
+        .optional()
+        .describe(
+          'Responding without an edit_token under a name already on the poll fails with code "duplicate_name", because it would count that person twice. Set true only to add a genuinely different person with the same name.'
+        ),
     },
-    async ({ poll_id, respondent_name, edit_token, slot_votes }) => {
+    async ({ poll_id, respondent_name, edit_token, slot_votes, allow_duplicate_name }) => {
       const result = await client.respond(poll_id, {
         name: respondent_name,
         edit_token,
         votes: slot_votes,
+        allow_duplicate_name,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -144,6 +151,12 @@ export function createMeetgridMcpServer(apiBaseUrl: string): McpServer {
         .optional()
         .describe('Yes/no votes per slot (alias: votes)'),
       edit_token: z.string().optional().describe('Existing edit token to update a prior response'),
+      allow_duplicate_name: z
+        .boolean()
+        .optional()
+        .describe(
+          'Voting without an edit_token under a name already on the poll fails with code "duplicate_name", because it would count that person twice. Set true only to add a genuinely different person with the same name.'
+        ),
     },
     async (args) => {
       const slotVotes = resolveVoteEntries(args);
@@ -151,6 +164,7 @@ export function createMeetgridMcpServer(apiBaseUrl: string): McpServer {
         name: args.name,
         edit_token: args.edit_token,
         votes: slotVotes,
+        allow_duplicate_name: args.allow_duplicate_name,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],

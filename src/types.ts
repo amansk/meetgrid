@@ -73,4 +73,6 @@ export interface RespondBody {
   name: string;
   edit_token?: string;
   votes: Array<{ slot_id: string; yes: boolean }>;
+  /** Opt in to a second respondent under a name already on the poll. */
+  allow_duplicate_name?: boolean;
 }

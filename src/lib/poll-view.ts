@@ -60,8 +60,15 @@ export function buildPollView(
     sort_order: s.sort_order,
   }));
 
+  // Rank by net availability (yes minus no) so a contested slot never outranks an
+  // uncontested one with the same yes count. Yes count breaks ties, then start time.
   const ranked = [...publicSlots]
-    .sort((a, b) => b.yes_count - a.yes_count || a.start_utc.localeCompare(b.start_utc))
+    .sort(
+      (a, b) =>
+        b.yes_count - b.no_count - (a.yes_count - a.no_count) ||
+        b.yes_count - a.yes_count ||
+        a.start_utc.localeCompare(b.start_utc)
+    )
     .map((s) => s.id);
 
   const votesByRespondent = new Map<string, Record<string, boolean>>();
