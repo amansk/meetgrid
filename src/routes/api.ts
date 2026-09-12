@@ -13,7 +13,13 @@ import {
   updateRespondentName,
   replaceVotes,
 } from '../db/queries';
-import { daysBetween, MAX_POLL_DAYS, MAX_SLOTS, parsePollId } from '../lib/validate';
+import {
+  daysBetween,
+  MAX_POLL_DAYS,
+  MAX_SLOTS,
+  parsePollId,
+  resolveCreatePollId,
+} from '../lib/validate';
 import { generateId, generateSecret, hashSecret, verifySecret } from '../lib/crypto';
 import { buildPollView } from '../lib/poll-view';
 import { clientKey, checkRateLimit } from '../lib/rate-limit';
@@ -117,7 +123,19 @@ api.post('/polls', async (c) => {
     duration_minutes ??
     (explicitSlots?.length ? defaultPollDuration(explicitSlots) : body.duration_minutes ?? 30);
 
-  const pollId = generateId(12);
+  const idResult = resolveCreatePollId(body);
+  if (!idResult.ok) return jsonError(idResult.error);
+
+  let pollId: string;
+  if (idResult.pollId) {
+    const existing = await getPoll(c.env.DB, idResult.pollId);
+    if (existing) {
+      return jsonError(`Poll link "${idResult.pollId}" is already taken`, 409);
+    }
+    pollId = idResult.pollId;
+  } else {
+    pollId = generateId(12);
+  }
   const organizerSecret = generateSecret();
   const organizerSecretHash = await hashSecret(organizerSecret);
   const now = Date.now();
