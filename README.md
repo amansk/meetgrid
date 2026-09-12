@@ -11,7 +11,7 @@ Create a poll, share a link, collect Yes/No availability, pick a time, and close
 ## Features
 
 - **Yes / No only** — no maybe votes
-- **Auto-generated slot grid** from date range, daily time window, and meeting duration (15–480 min)
+- **Manual time slots** (Doodle-style) — add date, start time, and duration per option; optional range generator
 - **No accounts** — unguessable poll IDs, organizer secrets, and per-respondent edit tokens
 - **Timezone-aware** — required on create; defaults to `America/Los_Angeles` in the UI
 - **Three thin pages** — Create, Respond, Results (mobile-first, form aesthetic)
@@ -90,7 +90,22 @@ Write endpoints are lightly rate-limited (30 requests / 60s per IP by default).
 
 ### curl examples
 
-**Create a poll**
+**Create a poll** (explicit slots — preferred)
+
+```bash
+curl -s -X POST http://localhost:8787/api/polls \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Team sync",
+    "timezone": "America/Los_Angeles",
+    "slots": [
+      {"date": "2026-09-15", "start_time": "10:00", "duration_minutes": 30},
+      {"date": "2026-09-16", "start_time": "14:00", "duration_minutes": 45}
+    ]
+  }'
+```
+
+**Create via range generator** (optional fallback when `slots` omitted)
 
 ```bash
 curl -s -X POST http://localhost:8787/api/polls \

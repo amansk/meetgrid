@@ -22,14 +22,19 @@ export class MeetgridClient {
     title: string;
     notes?: string;
     timezone: string;
-    duration_minutes: number;
-    start_date: string;
-    end_date: string;
-    daily_start: string;
-    daily_end: string;
+    slots?: Array<{
+      date?: string;
+      start_time?: string;
+      duration_minutes?: number;
+      start_utc?: string;
+      end_utc?: string;
+    }>;
+    duration_minutes?: number;
+    start_date?: string;
+    end_date?: string;
+    daily_start?: string;
+    daily_end?: string;
     weekdays?: number[];
-    extra_slots?: Array<{ start_utc: string; end_utc: string }>;
-    remove_slot_ids?: string[];
   }) {
     return this.request('/api/polls', { method: 'POST', body: JSON.stringify(body) });
   }
