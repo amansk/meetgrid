@@ -1,0 +1,24 @@
+{
+  "name": "meetgrid",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dead-simple no-login scheduling polls (Doodle alternative)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply meetgrid-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply meetgrid-db --remote",
+    "typecheck": "tsc --noEmit",
+    "test:dst": "npx --yes tsx scripts/test-dst.ts",
+    "mcp:build": "npm run build --prefix mcp",
+    "mcp:start": "node mcp/dist/index.js"
+  },
+  "dependencies": {
+    "hono": "^4.7.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260911.1",
+    "typescript": "^5.8.2",
+    "wrangler": "^4.1.0"
+  }
+}
