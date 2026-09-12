@@ -41,18 +41,28 @@ export interface VoteRow {
   yes: number;
 }
 
+export interface ExplicitSlotInput {
+  date?: string;
+  start_time?: string;
+  duration_minutes?: number;
+  start_utc?: string;
+  end_utc?: string;
+}
+
 export interface CreatePollBody {
   title: string;
   notes?: string;
   timezone: string;
-  duration_minutes: number;
-  start_date: string;
-  end_date: string;
-  daily_start: string;
-  daily_end: string;
+  /** Explicit slots — preferred over range generation when provided. */
+  slots?: ExplicitSlotInput[];
+  /** Default poll duration metadata; inferred from slots when omitted. */
+  duration_minutes?: number;
+  /** Range generator (optional when slots provided). */
+  start_date?: string;
+  end_date?: string;
+  daily_start?: string;
+  daily_end?: string;
   weekdays?: number[];
-  extra_slots?: Array<{ start_utc: string; end_utc: string }>;
-  remove_slot_ids?: string[];
 }
 
 export interface RespondBody {

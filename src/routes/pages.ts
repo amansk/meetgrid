@@ -45,7 +45,7 @@ pages.get('/', (c) => {
     `<div class="wrap">
   <header>
     <h1>Meetgrid</h1>
-    <p>Create a scheduling poll — no account needed.</p>
+    <p>Pick individual times — share a link, collect Yes/No.</p>
   </header>
 
   <div id="alert" class="alert error hidden"></div>
@@ -60,44 +60,50 @@ pages.get('/', (c) => {
     <label for="timezone">Timezone</label>
     <select id="timezone" name="timezone"></select>
 
-    <div class="row">
-      <div>
-        <label for="start_date">Start date</label>
-        <input type="date" id="start_date" name="start_date" required>
-      </div>
-      <div>
-        <label for="end_date">End date</label>
-        <input type="date" id="end_date" name="end_date" required>
-      </div>
-    </div>
+    <div class="section-title">Proposed times</div>
+    <p class="link-muted" style="margin:0 0 0.5rem">Add each option — date, start time, and length.</p>
+    <ul class="slot-builder-list" id="slot-list"></ul>
+    <button type="button" class="btn-link" id="add-slot">+ Add another time</button>
 
-    <div class="row">
-      <div>
-        <label for="daily_start">Daily window start</label>
-        <input type="time" id="daily_start" name="daily_start" value="09:00" required>
+    <details class="advanced">
+      <summary>Advanced: generate from date range</summary>
+      <div class="row">
+        <div>
+          <label for="start_date">Start date</label>
+          <input type="date" id="start_date" name="start_date">
+        </div>
+        <div>
+          <label for="end_date">End date</label>
+          <input type="date" id="end_date" name="end_date">
+        </div>
       </div>
-      <div>
-        <label for="daily_end">Daily window end</label>
-        <input type="time" id="daily_end" name="daily_end" value="17:00" required>
+      <div class="row">
+        <div>
+          <label for="daily_start">Daily window start</label>
+          <input type="time" id="daily_start" name="daily_start" value="09:00">
+        </div>
+        <div>
+          <label for="daily_end">Daily window end</label>
+          <input type="time" id="daily_end" name="daily_end" value="17:00">
+        </div>
       </div>
-    </div>
+      <label for="gen_duration">Slot duration (minutes)</label>
+      <input type="number" id="gen_duration" value="30" min="15" max="480" step="15">
+      <fieldset>
+        <legend>Weekdays</legend>
+        <div class="weekdays" id="weekdays">
+          ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            .map(
+              (d, i) =>
+                `<label><input type="checkbox" name="weekday" value="${i + 1}" checked> ${d}</label>`
+            )
+            .join('')}
+        </div>
+      </fieldset>
+      <button type="button" class="secondary" id="gen-add" style="width:100%">Add generated times to list</button>
+    </details>
 
-    <label for="duration_minutes">Meeting duration (minutes)</label>
-    <input type="number" id="duration_minutes" name="duration_minutes" value="30" min="15" max="480" step="15" required>
-
-    <fieldset>
-      <legend>Weekdays <span class="link-muted">(leave all checked for every day)</span></legend>
-      <div class="weekdays" id="weekdays">
-        ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-          .map(
-            (d, i) =>
-              `<label><input type="checkbox" name="weekday" value="${i + 1}" checked> ${d}</label>`
-          )
-          .join('')}
-      </div>
-    </fieldset>
-
-    <button type="submit" class="primary" id="submit-btn">Create poll</button>
+    <button type="submit" class="primary" id="submit-btn" style="margin-top:0.75rem">Create poll</button>
   </form>
 
   <div id="success" class="hidden">
@@ -143,30 +149,127 @@ document.getElementById('start_date').value = fmt(today);
 const end = new Date(today); end.setDate(end.getDate() + 6);
 document.getElementById('end_date').value = fmt(end);
 
+let slotCounter = 0;
+const manualSlots = [];
+
+function defaultSlot() {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return { uid: 's' + (++slotCounter), date: fmt(d), start_time: '10:00', duration_minutes: 30 };
+}
+
+function formatSlotSummary(slot) {
+  const [y, m, d] = slot.date.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const datePart = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const [hh, mm] = slot.start_time.split(':');
+  const hour = Number(hh);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 || 12;
+  return datePart + ' · ' + h12 + ':' + mm + ' ' + ampm + ' · ' + slot.duration_minutes + ' min';
+}
+
+function renderSlotList() {
+  const ul = document.getElementById('slot-list');
+  if (!manualSlots.length) {
+    ul.innerHTML = '<li class="link-muted" style="padding:0.5rem 0">No times yet — add one below.</li>';
+    return;
+  }
+  ul.innerHTML = manualSlots.map((slot, idx) =>
+    '<li class="slot-builder-item" data-uid="' + slot.uid + '">' +
+      '<p class="slot-builder-label">' + (idx + 1) + '. ' + formatSlotSummary(slot) + '</p>' +
+      '<div><label>Date</label><input type="date" data-field="date" value="' + slot.date + '" required></div>' +
+      '<div><label>Start</label><input type="time" data-field="start_time" value="' + slot.start_time + '" required></div>' +
+      '<div><label>Min</label><input type="number" data-field="duration_minutes" value="' + slot.duration_minutes + '" min="15" max="480" step="15" required></div>' +
+      '<div class="slot-builder-actions">' +
+        '<button type="button" class="btn-icon secondary" data-action="up" title="Move up"' + (idx === 0 ? ' disabled' : '') + '↑</button>' +
+        '<button type="button" class="btn-icon secondary" data-action="down" title="Move down"' + (idx === manualSlots.length - 1 ? ' disabled' : '') + '↓</button>' +
+        '<button type="button" class="btn-icon secondary" data-action="remove" title="Remove">×</button>' +
+      '</div>' +
+    '</li>'
+  ).join('');
+
+  ul.querySelectorAll('.slot-builder-item').forEach(li => {
+    const uid = li.dataset.uid;
+    li.querySelectorAll('input[data-field]').forEach(input => {
+      input.addEventListener('change', () => {
+        const slot = manualSlots.find(s => s.uid === uid);
+        if (!slot) return;
+        if (input.dataset.field === 'duration_minutes') slot.duration_minutes = Number(input.value);
+        else slot[input.dataset.field] = input.value;
+        li.querySelector('.slot-builder-label').textContent =
+          (manualSlots.findIndex(s => s.uid === uid) + 1) + '. ' + formatSlotSummary(slot);
+      });
+    });
+    li.querySelector('[data-action="remove"]').addEventListener('click', () => {
+      const i = manualSlots.findIndex(s => s.uid === uid);
+      if (i >= 0) manualSlots.splice(i, 1);
+      renderSlotList();
+    });
+    li.querySelector('[data-action="up"]').addEventListener('click', () => {
+      const i = manualSlots.findIndex(s => s.uid === uid);
+      if (i > 0) { const tmp = manualSlots[i-1]; manualSlots[i-1] = manualSlots[i]; manualSlots[i] = tmp; renderSlotList(); }
+    });
+    li.querySelector('[data-action="down"]').addEventListener('click', () => {
+      const i = manualSlots.findIndex(s => s.uid === uid);
+      if (i >= 0 && i < manualSlots.length - 1) { const tmp = manualSlots[i+1]; manualSlots[i+1] = manualSlots[i]; manualSlots[i] = tmp; renderSlotList(); }
+    });
+  });
+}
+
 function showError(msg) {
   const el = document.getElementById('alert');
   el.textContent = msg;
   el.classList.remove('hidden');
 }
 
-document.getElementById('create-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  document.getElementById('alert').classList.add('hidden');
-  const btn = document.getElementById('submit-btn');
-  btn.disabled = true;
-  btn.textContent = 'Creating…';
+document.getElementById('add-slot').addEventListener('click', () => {
+  manualSlots.push(defaultSlot());
+  renderSlotList();
+});
 
+document.getElementById('gen-add').addEventListener('click', async () => {
+  document.getElementById('alert').classList.add('hidden');
   const weekdays = [...document.querySelectorAll('input[name=weekday]:checked')].map(el => Number(el.value));
   const body = {
-    title: document.getElementById('title').value,
-    notes: document.getElementById('notes').value || undefined,
     timezone: document.getElementById('timezone').value,
-    duration_minutes: Number(document.getElementById('duration_minutes').value),
+    duration_minutes: Number(document.getElementById('gen_duration').value),
     start_date: document.getElementById('start_date').value,
     end_date: document.getElementById('end_date').value,
     daily_start: document.getElementById('daily_start').value,
     daily_end: document.getElementById('daily_end').value,
     weekdays: weekdays.length === 7 ? undefined : weekdays,
+  };
+  try {
+    const res = await fetch('/api/slots/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to generate');
+    for (const s of data.slots) {
+      manualSlots.push({ uid: 's' + (++slotCounter), date: s.date, start_time: s.start_time, duration_minutes: s.duration_minutes });
+    }
+    renderSlotList();
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+document.getElementById('create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  document.getElementById('alert').classList.add('hidden');
+
+  if (!manualSlots.length) {
+    showError('Add at least one proposed time.');
+    return;
+  }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  const body = {
+    title: document.getElementById('title').value,
+    notes: document.getElementById('notes').value || undefined,
+    timezone: document.getElementById('timezone').value,
+    slots: manualSlots.map(s => ({ date: s.date, start_time: s.start_time, duration_minutes: s.duration_minutes })),
   };
 
   try {
@@ -197,6 +300,9 @@ document.querySelectorAll('[data-copy]').forEach(btn => {
     setTimeout(() => { btn.textContent = btn.dataset.copy === 'organizer-secret' ? 'Copy secret' : 'Copy'; }, 1500);
   });
 });
+
+manualSlots.push(defaultSlot());
+renderSlotList();
 </script>`
   );
   return htmlPage(c, html);

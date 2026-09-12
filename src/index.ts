@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { handleMcpRequest } from './mcp/handler';
 import api from './routes/api';
 import pages from './routes/pages';
 import type { Env } from './types';
@@ -17,4 +18,12 @@ app.onError((err, c) => {
   return c.json({ error: 'Internal server error' }, 500);
 });
 
-export default app;
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/mcp') {
+      return handleMcpRequest(request);
+    }
+    return app.fetch(request, env, ctx);
+  },
+} satisfies ExportedHandler<Env>;

@@ -8,6 +8,14 @@ const MEETGRID_API_URL = process.env.MEETGRID_API_URL ?? 'http://127.0.0.1:8787'
 
 const client = new MeetgridClient(MEETGRID_API_URL);
 
+const explicitSlotSchema = z.object({
+  date: z.string().optional().describe('Local date YYYY-MM-DD in poll timezone'),
+  start_time: z.string().optional().describe('Local start time HH:MM'),
+  duration_minutes: z.number().int().min(15).max(480).optional().describe('Slot length in minutes'),
+  start_utc: z.string().optional().describe('UTC ISO start (alternative to date+start_time+duration)'),
+  end_utc: z.string().optional().describe('UTC ISO end (alternative to date+start_time+duration)'),
+});
+
 const server = new McpServer({
   name: 'meetgrid',
   version: '1.0.0',
@@ -15,20 +23,30 @@ const server = new McpServer({
 
 server.tool(
   'poll_create',
-  'Create a new Meetgrid scheduling poll with auto-generated time slots.',
+  'Create a Meetgrid poll. Prefer explicit slots array; range fields are optional fallback for grid generation.',
   {
     title: z.string().describe('Poll title'),
     notes: z.string().optional().describe('Optional notes for respondents'),
     timezone: z.string().describe('IANA timezone, e.g. America/Los_Angeles'),
-    duration_minutes: z.number().int().min(15).max(480).describe('Meeting duration in minutes'),
-    start_date: z.string().describe('First date YYYY-MM-DD'),
-    end_date: z.string().describe('Last date YYYY-MM-DD'),
-    daily_start: z.string().describe('Daily window start HH:MM'),
-    daily_end: z.string().describe('Daily window end HH:MM'),
+    slots: z
+      .array(explicitSlotSchema)
+      .optional()
+      .describe('Explicit time options (preferred). Each slot: date+start_time+duration_minutes or start_utc+end_utc.'),
+    duration_minutes: z
+      .number()
+      .int()
+      .min(15)
+      .max(480)
+      .optional()
+      .describe('Default duration metadata; required for range generation, inferred from slots otherwise'),
+    start_date: z.string().optional().describe('Range generator: first date YYYY-MM-DD'),
+    end_date: z.string().optional().describe('Range generator: last date YYYY-MM-DD'),
+    daily_start: z.string().optional().describe('Range generator: daily window start HH:MM'),
+    daily_end: z.string().optional().describe('Range generator: daily window end HH:MM'),
     weekdays: z
       .array(z.number().int().min(1).max(7))
       .optional()
-      .describe('ISO weekdays to include (1=Mon … 7=Sun). Omit for all days.'),
+      .describe('Range generator: ISO weekdays (1=Mon … 7=Sun). Omit for all days.'),
   },
   async (args) => {
     const result = await client.createPoll(args);
