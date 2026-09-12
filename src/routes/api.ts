@@ -11,8 +11,9 @@ import {
   insertSlots,
   setPollDecision,
   updateRespondentName,
-  upsertVotes,
+  replaceVotes,
 } from '../db/queries';
+import { daysBetween, MAX_POLL_DAYS, MAX_SLOTS } from '../lib/validate';
 import { generateId, generateSecret, hashSecret, verifySecret } from '../lib/crypto';
 import { buildPollView } from '../lib/poll-view';
 import { clientKey, checkRateLimit } from '../lib/rate-limit';
@@ -75,6 +76,12 @@ api.post('/polls', async (c) => {
   if (!start_date || !end_date || !daily_start || !daily_end) {
     return jsonError('start_date, end_date, daily_start, daily_end are required');
   }
+  if (end_date < start_date) {
+    return jsonError('end_date must be on or after start_date');
+  }
+  if (daysBetween(start_date, end_date) > MAX_POLL_DAYS) {
+    return jsonError(`Date range cannot exceed ${MAX_POLL_DAYS} days`);
+  }
 
   let slots;
   try {
@@ -99,6 +106,9 @@ api.post('/polls', async (c) => {
     slots = slots.filter((s) => !removeSet.has(s.id)).map((s, i) => ({ ...s, sort_order: i }));
   }
   if (!slots.length) return jsonError('No slots generated — adjust your date range or time window');
+  if (slots.length > MAX_SLOTS) {
+    return jsonError(`Too many slots (${slots.length}) — maximum is ${MAX_SLOTS}. Shorten the date range or daily window.`);
+  }
 
   const pollId = generateId(12);
   const organizerSecret = generateSecret();
@@ -135,6 +145,10 @@ api.get('/polls/:id', async (c) => {
 });
 
 api.get('/polls/:id/my-response', async (c) => {
+  if (!(await checkRateLimit(c.env, clientKey(c.req.raw)))) {
+    return jsonError('Rate limit exceeded', 429);
+  }
+
   const pollId = c.req.param('id');
   const editToken = c.req.query('edit_token');
   if (!editToken) return jsonError('edit_token query param is required');
@@ -222,7 +236,7 @@ api.post('/polls/:id/respond', async (c) => {
     });
   }
 
-  await upsertVotes(c.env.DB, respondentId, body.votes);
+  await replaceVotes(c.env.DB, respondentId, body.votes);
 
   const view = await loadPublicPoll(c.env.DB, pollId);
   return c.json({
@@ -250,6 +264,7 @@ api.post('/polls/:id/decision', async (c) => {
 
   const auth = await verifyOrganizer(c.env.DB, pollId, body.organizer_secret);
   if (auth.error) return jsonError(auth.error, auth.status);
+  if (auth.poll!.status === 'closed') return jsonError('Poll is closed', 403);
 
   const slots = await getSlots(c.env.DB, pollId);
   if (!slots.some((s) => s.id === body.slot_id)) {

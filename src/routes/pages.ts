@@ -1,8 +1,20 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import styles from '../assets/styles';
+import { parsePollId } from '../lib/validate';
 import type { Env } from '../types';
 
+type PageContext = Context<{ Bindings: Env }>;
+
 const pages = new Hono<{ Bindings: Env }>();
+
+const SECURITY_HEADERS: Record<string, string> = {
+  'Content-Security-Policy':
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'",
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+};
 
 function layout(title: string, body: string, extraScript = ''): string {
   return `<!DOCTYPE html>
@@ -18,6 +30,13 @@ function layout(title: string, body: string, extraScript = ''): string {
   ${extraScript}
 </body>
 </html>`;
+}
+
+function htmlPage(c: PageContext, body: string) {
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    c.header(key, value);
+  }
+  return c.html(body);
 }
 
 pages.get('/', (c) => {
@@ -180,11 +199,12 @@ document.querySelectorAll('[data-copy]').forEach(btn => {
 });
 </script>`
   );
-  return c.html(html);
+  return htmlPage(c, html);
 });
 
 pages.get('/p/:id', (c) => {
-  const pollId = c.req.param('id');
+  const pollId = parsePollId(c.req.param('id'));
+  if (!pollId) return c.text('Not found', 404);
   const html = layout(
     'Respond',
     `<div class="wrap">
@@ -230,7 +250,8 @@ function getCookie(name) {
 
 function setCookie(name, value) {
   const maxAge = 60 * 60 * 24 * 365;
-  document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
+  const secure = location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=' + maxAge + '; SameSite=Lax' + secure;
 }
 
 function showError(msg) {
@@ -367,16 +388,20 @@ const urlEdit = params.get('edit');
 if (urlEdit) {
   editToken = urlEdit;
   setCookie('meetgrid_edit_' + POLL_ID, urlEdit);
+  params.delete('edit');
+  const qs = params.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
 }
 
 loadPoll().catch(err => showError(err.message));
 </script>`
   );
-  return c.html(html);
+  return htmlPage(c, html);
 });
 
 pages.get('/p/:id/results', (c) => {
-  const pollId = c.req.param('id');
+  const pollId = parsePollId(c.req.param('id'));
+  if (!pollId) return c.text('Not found', 404);
   const html = layout(
     'Results',
     `<div class="wrap">
@@ -413,8 +438,15 @@ pages.get('/p/:id/results', (c) => {
 </div>
 <script>
 const POLL_ID = ${JSON.stringify(pollId)};
-let organizerSecret = new URLSearchParams(location.search).get('secret')
-  || localStorage.getItem('meetgrid_secret_' + POLL_ID);
+const urlParams = new URLSearchParams(location.search);
+const urlSecret = urlParams.get('secret');
+let organizerSecret = urlSecret || localStorage.getItem('meetgrid_secret_' + POLL_ID);
+if (urlSecret) {
+  localStorage.setItem('meetgrid_secret_' + POLL_ID, urlSecret);
+  urlParams.delete('secret');
+  const qs = urlParams.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+}
 let pollData = null;
 
 function showError(msg) {
@@ -519,7 +551,7 @@ document.getElementById('close-poll')?.addEventListener('click', async () => {
 loadPoll().catch(err => showError(err.message));
 </script>`
   );
-  return c.html(html);
+  return htmlPage(c, html);
 });
 
 export default pages;

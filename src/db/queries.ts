@@ -105,11 +105,23 @@ export async function updateRespondentName(
     .run();
 }
 
-export async function upsertVotes(
+/** Replace respondent votes with exactly the payload (omitted slots are cleared). */
+export async function replaceVotes(
   db: D1Database,
   respondentId: string,
   votes: Array<{ slot_id: string; yes: boolean }>
 ): Promise<void> {
+  if (votes.length === 0) {
+    await db.prepare('DELETE FROM votes WHERE respondent_id = ?').bind(respondentId).run();
+    return;
+  }
+
+  const placeholders = votes.map(() => '?').join(', ');
+  await db
+    .prepare(`DELETE FROM votes WHERE respondent_id = ? AND slot_id NOT IN (${placeholders})`)
+    .bind(respondentId, ...votes.map((v) => v.slot_id))
+    .run();
+
   const stmts = votes.map((v) =>
     db
       .prepare(
@@ -118,7 +130,7 @@ export async function upsertVotes(
       )
       .bind(respondentId, v.slot_id, v.yes ? 1 : 0)
   );
-  if (stmts.length) await db.batch(stmts);
+  await db.batch(stmts);
 }
 
 export async function setPollDecision(

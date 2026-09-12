@@ -1,9 +1,9 @@
-/** Convert a local date+time in a timezone to UTC ISO string. */
+/** Convert a local date+time in a timezone to UTC ISO string, or null if the local time does not exist (DST gap). */
 export function localDateTimeToUtcIso(
   dateStr: string,
   timeStr: string,
   timeZone: string
-): string {
+): string | null {
   const [year, month, day] = dateStr.split('-').map(Number);
   const [hour, minute] = timeStr.split(':').map(Number);
 
@@ -16,6 +16,17 @@ export function localDateTimeToUtcIso(
     const delta = targetMs - actualMs;
     if (delta === 0) break;
     guess += delta;
+  }
+
+  const resolved = getZonedParts(new Date(guess), timeZone);
+  if (
+    resolved.year !== year ||
+    resolved.month !== month ||
+    resolved.day !== day ||
+    resolved.hour !== hour ||
+    resolved.minute !== minute
+  ) {
+    return null;
   }
 
   return new Date(guess).toISOString();
@@ -71,6 +82,7 @@ export function formatSlotLabel(startUtc: string, endUtc: string, timeZone: stri
 /** ISO weekday 1=Mon … 7=Sun for a YYYY-MM-DD date in timezone. */
 export function isoWeekdayInTimezone(dateStr: string, timeZone: string): number {
   const utc = localDateTimeToUtcIso(dateStr, '12:00', timeZone);
+  if (!utc) return 1;
   const formatter = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' });
   const day = formatter.format(new Date(utc));
   const map: Record<string, number> = {
@@ -109,4 +121,8 @@ export function isValidTimezone(tz: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function slotDurationMinutes(startUtc: string, endUtc: string): number {
+  return (new Date(endUtc).getTime() - new Date(startUtc).getTime()) / 60_000;
 }

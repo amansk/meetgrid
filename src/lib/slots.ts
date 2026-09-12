@@ -5,6 +5,7 @@ import {
   localDateTimeToUtcIso,
   minutesToTime,
   parseTimeToMinutes,
+  slotDurationMinutes,
 } from './timezone';
 
 export interface GeneratedSlot {
@@ -22,6 +23,15 @@ export interface SlotGenerationInput {
   duration_minutes: number;
   timezone: string;
   weekdays?: number[];
+}
+
+function isValidGeneratedSlot(
+  slot: GeneratedSlot,
+  durationMinutes: number
+): boolean {
+  if (slot.start_utc >= slot.end_utc) return false;
+  const actual = slotDurationMinutes(slot.start_utc, slot.end_utc);
+  return Math.abs(actual - durationMinutes) < 0.001;
 }
 
 export function generateSlots(input: SlotGenerationInput): GeneratedSlot[] {
@@ -57,12 +67,20 @@ export function generateSlots(input: SlotGenerationInput): GeneratedSlot[] {
         const endMin = startMin + duration_minutes;
         const startTime = minutesToTime(startMin);
         const endTime = minutesToTime(endMin);
-        slots.push({
+        const startUtc = localDateTimeToUtcIso(current, startTime, timezone);
+        const endUtc = localDateTimeToUtcIso(current, endTime, timezone);
+        if (!startUtc || !endUtc) continue;
+
+        const candidate: GeneratedSlot = {
           id: generateId(),
-          start_utc: localDateTimeToUtcIso(current, startTime, timezone),
-          end_utc: localDateTimeToUtcIso(current, endTime, timezone),
-          sort_order: sortOrder++,
-        });
+          start_utc: startUtc,
+          end_utc: endUtc,
+          sort_order: sortOrder,
+        };
+        if (!isValidGeneratedSlot(candidate, duration_minutes)) continue;
+
+        candidate.sort_order = sortOrder++;
+        slots.push(candidate);
       }
     }
     current = addDays(current, 1);
@@ -73,17 +91,22 @@ export function generateSlots(input: SlotGenerationInput): GeneratedSlot[] {
 
 export function mergeExtraSlots(
   base: GeneratedSlot[],
-  extras: Array<{ start_utc: string; end_utc: string }>
+  extras: Array<{ start_utc: string; end_utc: string }>,
+  durationMinutes?: number
 ): GeneratedSlot[] {
   const merged = [...base];
   let sortOrder = base.length;
   for (const extra of extras) {
-    merged.push({
+    const candidate: GeneratedSlot = {
       id: generateId(),
       start_utc: extra.start_utc,
       end_utc: extra.end_utc,
       sort_order: sortOrder++,
-    });
+    };
+    if (durationMinutes !== undefined && !isValidGeneratedSlot(candidate, durationMinutes)) {
+      continue;
+    }
+    merged.push(candidate);
   }
   merged.sort((a, b) => a.start_utc.localeCompare(b.start_utc));
   return merged.map((s, i) => ({ ...s, sort_order: i }));
