@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { MeetgridClient } from './client.js';
+import { resolveVoteEntries, shapePollReadResponse } from './ergonomics.js';
 
 const MEETGRID_API_URL = process.env.MEETGRID_API_URL ?? 'http://127.0.0.1:8787';
 
@@ -14,6 +15,11 @@ const explicitSlotSchema = z.object({
   duration_minutes: z.number().int().min(15).max(480).optional().describe('Slot length in minutes'),
   start_utc: z.string().optional().describe('UTC ISO start (alternative to date+start_time+duration)'),
   end_utc: z.string().optional().describe('UTC ISO end (alternative to date+start_time+duration)'),
+});
+
+const voteEntrySchema = z.object({
+  slot_id: z.string(),
+  yes: z.boolean(),
 });
 
 const server = new McpServer({
@@ -55,6 +61,10 @@ server.tool(
       .string()
       .optional()
       .describe('Alias for slug — same validation and behavior.'),
+    name: z
+      .string()
+      .optional()
+      .describe('Optional custom poll link name/slug (e.g. team-sync → /p/team-sync). Alias of slug.'),
   },
   async (args) => {
     const result = await client.createPoll(args);
@@ -74,6 +84,23 @@ server.tool(
     const result = await client.getPoll(poll_id);
     return {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'read_poll',
+  'Read a poll and its options for voting. Same data as poll_get, with an `options` list (id, label, yes_count, no_count) for each time slot.',
+  {
+    poll_id: z.string().describe('Public poll ID'),
+  },
+  async ({ poll_id }) => {
+    const result = await client.getPoll(poll_id) as {
+      slots: Array<{ id: string; label: string; yes_count: number; no_count: number }>;
+      [key: string]: unknown;
+    };
+    return {
+      content: [{ type: 'text', text: JSON.stringify(shapePollReadResponse(result), null, 2) }],
     };
   }
 );
@@ -99,6 +126,35 @@ server.tool(
       name: respondent_name,
       edit_token,
       votes: slot_votes,
+    });
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'vote_poll',
+  'Vote yes/no on poll options. Call read_poll first to get slot ids.',
+  {
+    poll_id: z.string().describe('Public poll ID'),
+    name: z.string().describe('Voter display name'),
+    votes: z
+      .array(voteEntrySchema)
+      .optional()
+      .describe('Yes/no votes per slot (alias: options)'),
+    options: z
+      .array(voteEntrySchema)
+      .optional()
+      .describe('Yes/no votes per slot (alias: votes)'),
+    edit_token: z.string().optional().describe('Existing edit token to update a prior response'),
+  },
+  async (args) => {
+    const slotVotes = resolveVoteEntries(args);
+    const result = await client.respond(args.poll_id, {
+      name: args.name,
+      edit_token: args.edit_token,
+      votes: slotVotes,
     });
     return {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
