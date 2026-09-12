@@ -30,6 +30,8 @@ export interface RespondentRow {
   id: string;
   poll_id: string;
   name: string;
+  /** Null for responses recorded before addresses were collected. */
+  email: string | null;
   edit_token_hash: string;
   created_at: number;
   updated_at: number;
@@ -70,9 +72,15 @@ export interface CreatePollBody {
 }
 
 export interface RespondBody {
+  /** First name, shown to everyone who can see the results. */
   name: string;
+  /** Email address — the identity key, never shown to other participants. */
+  email?: string;
   edit_token?: string;
   votes: Array<{ slot_id: string; yes: boolean }>;
-  /** Opt in to a second respondent under a name already on the poll. */
+  /**
+   * Only reachable on polls answered before addresses were collected, where a
+   * name is the only thing left to match on. Addresses make this unnecessary.
+   */
   allow_duplicate_name?: boolean;
 }

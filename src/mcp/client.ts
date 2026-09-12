@@ -63,6 +63,7 @@ export class MeetgridClient {
     pollId: string,
     body: {
       name: string;
+      email?: string;
       edit_token?: string;
       votes: Array<{ slot_id: string; yes: boolean }>;
       allow_duplicate_name?: boolean;
@@ -78,6 +79,13 @@ export class MeetgridClient {
     return this.request(`/api/polls/${pollId}/decision`, {
       method: 'POST',
       body: JSON.stringify({ organizer_secret: organizerSecret, slot_id: slotId }),
+    });
+  }
+
+  contacts(pollId: string, organizerSecret: string) {
+    return this.request(`/api/polls/${pollId}/contacts`, {
+      method: 'POST',
+      body: JSON.stringify({ organizer_secret: organizerSecret }),
     });
   }
 

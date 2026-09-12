@@ -36,7 +36,7 @@ const ORGANIZER_SECRET_DESC =
   'The organizer_secret returned by poll_create. A capability token rather than a password: whoever holds it controls the poll. Never put it anywhere participants can read.';
 
 const ALLOW_DUPLICATE_NAME_DESC =
-  'Responding without an edit_token under a name already on the poll fails with code "duplicate_name", because it would count that person twice. Set true only to add a genuinely different person who happens to share the name.';
+  'Legacy escape hatch, rarely needed. It only bites on polls answered before email addresses were collected, where a repeated first name is all there is to go on and the call fails with code "duplicate_name". Set true to add the person as a separate respondent anyway.';
 
 /** Stateless MCP server factory — new instance per HTTP request. */
 export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): McpServer {
@@ -125,7 +125,7 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
     [
       'Read a poll: title, notes, timezone, status (open or closed), the chosen slot if the organizer has picked one, every time slot with its id, label, yes_count and no_count, who has answered and how, and `ranked_slot_ids` ordered best first (most yes, fewest no, then earliest).',
       '',
-      'Use it for any read — checking results, and getting the slot ids poll_respond needs. Safe to show anyone: it never returns the organizer secret.',
+      'Use it for any read — checking results, and getting the slot ids poll_respond needs. Safe to show anyone: it never returns the organizer secret, and never returns respondents’ email addresses.',
       'Fails with 404 on an unknown poll id, or one that has been deleted.',
     ].join('\n'),
     {
@@ -161,17 +161,25 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
     [
       'Answer a poll as one person, or change what that person already said. Call poll_get first: every vote is keyed by slot id.',
       '',
-      'Answering again under a name already on the poll fails with code "duplicate_name" rather than quietly counting that person twice. Pass the edit_token to change an existing answer, or allow_duplicate_name to add a genuinely different person with the same name.',
+      'The email address is the identity. Answering again under an address already on the poll updates that response in place instead of adding a second row, so nobody gets counted twice — and it issues a fresh edit_token, retiring the previous one. Two people sharing a first name with different addresses are two respondents, as they should be.',
       'A slot left out of `slot_votes` is recorded as no answer, which is not the same as a no. Send an entry for every slot you mean to answer.',
       '',
-      'Returns respondent_id and edit_token. Keep the edit_token: it is the only way to change this response later and the server cannot give it back.',
+      'Returns respondent_id, edit_token and `replaced_existing`. Keep the edit_token: it is the only way to change this response later and the server cannot give it back.',
       'Fails if the poll is closed.',
     ].join('\n'),
     {
       poll_id: z.string().describe(POLL_ID_DESC),
       respondent_name: z
         .string()
-        .describe('Display name for this person, shown to everyone who can see the results'),
+        .describe(
+          'First name only. Shown to everyone who can see the results, so no surname and nothing else here.'
+        ),
+      respondent_email: z
+        .string()
+        .optional()
+        .describe(
+          'Email address. Required for a new response: it is the identity key, and it is visible to the organizer alone, never to other participants. Omit only when updating through an edit_token.'
+        ),
       edit_token: z
         .string()
         .optional()
@@ -183,9 +191,17 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
         .describe('One entry per slot being answered: { slot_id, yes }. Omitted slots stay unanswered.'),
       allow_duplicate_name: z.boolean().optional().describe(ALLOW_DUPLICATE_NAME_DESC),
     },
-    async ({ poll_id, respondent_name, edit_token, slot_votes, allow_duplicate_name }) => {
+    async ({
+      poll_id,
+      respondent_name,
+      respondent_email,
+      edit_token,
+      slot_votes,
+      allow_duplicate_name,
+    }) => {
       const result = await client.respond(poll_id, {
         name: respondent_name,
+        email: respondent_email,
         edit_token,
         votes: slot_votes,
         allow_duplicate_name,
@@ -199,12 +215,18 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
   server.tool(
     'vote_poll',
     [
-      'Alias of poll_respond for clients using these parameter names: `name` for the display name, and `votes` (or `options`) for the slot votes.',
+      'Alias of poll_respond for clients using these parameter names: `name` for the first name, `email` for the address, `votes` (or `options`) for the slot votes.',
       'Prefer poll_respond. Identical behaviour, identical edit_token, identical identity rules.',
     ].join('\n'),
     {
       poll_id: z.string().describe(POLL_ID_DESC),
-      name: z.string().describe('Display name for this person, shown to everyone who can see the results'),
+      name: z.string().describe('First name only — shown to everyone who can see the results'),
+      email: z
+        .string()
+        .optional()
+        .describe(
+          'Email address. Required for a new response; visible to the organizer alone, never to other participants.'
+        ),
       votes: z
         .array(voteEntrySchema)
         .optional()
@@ -223,10 +245,29 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
       const slotVotes = resolveVoteEntries(args);
       const result = await client.respond(args.poll_id, {
         name: args.name,
+        email: args.email,
         edit_token: args.edit_token,
         votes: slotVotes,
         allow_duplicate_name: args.allow_duplicate_name,
       });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    'poll_contacts',
+    [
+      'List who has answered, with their email addresses — the organizer\u2019s view of the respondents, for chasing the people who have not answered and sending the invite once a time is picked.',
+      'Requires the organizer secret, because addresses are deliberately absent from poll_get and from the public results page. Returns id, name and email per respondent and nothing about the votes; poll_get has those.',
+    ].join('\n'),
+    {
+      poll_id: z.string().describe(POLL_ID_DESC),
+      organizer_secret: z.string().describe(ORGANIZER_SECRET_DESC),
+    },
+    async ({ poll_id, organizer_secret }) => {
+      const result = await client.contacts(poll_id, organizer_secret);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
@@ -258,7 +299,7 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
     'poll_close',
     [
       'Stop a poll taking new or changed responses. Everything stays readable — results, votes, the decision — which makes this the safe way to finish with a poll.',
-      'There is no reopen call, so it is one-way. Requires the organizer secret. Nothing deletes a poll on request: polls are removed automatically 30 days after the last thing that happens to them.',
+      'There is no reopen call, so it is one-way. Requires the organizer secret. Nothing deletes a poll on request: polls are removed automatically 30 days after the last thing that happens to them, which takes the respondents\u2019 names and addresses with them.',
     ].join('\n'),
     {
       poll_id: z.string().describe(POLL_ID_DESC),

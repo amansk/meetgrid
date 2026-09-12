@@ -280,6 +280,7 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
 
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
+  const editTokenUsed = !!editToken;
   btn.textContent = 'Creating…';
 
   const customSlug = document.getElementById('custom_slug').value.trim();
@@ -348,8 +349,12 @@ pages.get('/p/:id', (c) => {
   <div id="closed-notice" class="alert info hidden">This poll is closed.</div>
 
   <form id="respond-form">
-    <label for="name">Your name</label>
-    <input type="text" id="name" name="name" required placeholder="Alex">
+    <label for="name">First name</label>
+    <input type="text" id="name" name="name" required placeholder="Alex" autocomplete="given-name">
+
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required placeholder="alex@example.com" autocomplete="email">
+    <p class="field-hint">Only the organizer sees your email. Other people see your first name.</p>
 
     <div class="section-title">Mark your availability</div>
     <ul class="slot-list" id="slots"></ul>
@@ -359,6 +364,7 @@ pages.get('/p/:id', (c) => {
 
   <div id="success" class="hidden">
     <div class="alert success">Responses saved!</div>
+    <p class="link-muted" id="saved-note"></p>
     <p class="link-muted">Save your edit link to change answers later:</p>
     <div class="copy-row">
       <input type="text" id="edit-link" readonly>
@@ -458,6 +464,7 @@ async function loadPoll() {
       if (meRes.ok) {
         const me = await meRes.json();
         document.getElementById('name').value = me.name;
+        if (me.email) document.getElementById('email').value = me.email;
         Object.entries(me.votes).forEach(([slotId, yes]) => { votes[slotId] = yes; });
         applyViewerTimezone(poll);
       }
@@ -465,6 +472,8 @@ async function loadPoll() {
   } else {
     const storedName = localStorage.getItem('meetgrid_name_' + POLL_ID);
     if (storedName) document.getElementById('name').value = storedName;
+    const storedEmail = localStorage.getItem('meetgrid_email_' + POLL_ID);
+    if (storedEmail) document.getElementById('email').value = storedEmail;
   }
   return poll;
 }
@@ -483,9 +492,11 @@ async function submitResponse(allowDuplicateName) {
 
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
+  const editTokenUsed = !!editToken;
 
   const body = {
     name: document.getElementById('name').value.trim(),
+    email: document.getElementById('email').value.trim(),
     edit_token: editToken || undefined,
     votes: slotVotes,
     allow_duplicate_name: allowDuplicateName || undefined,
@@ -509,7 +520,17 @@ async function submitResponse(allowDuplicateName) {
 
     editToken = data.edit_token;
     setCookie('meetgrid_edit_' + POLL_ID, editToken);
-    localStorage.setItem('meetgrid_name_' + POLL_ID, body.name);
+    try {
+      localStorage.setItem('meetgrid_name_' + POLL_ID, body.name);
+      localStorage.setItem('meetgrid_email_' + POLL_ID, body.email);
+    } catch (_) {}
+
+    // An address already on the poll updates the answer it already has. Say so,
+    // so somebody who mistyped a colleague's address can see what happened.
+    if (data.replaced_existing && !editTokenUsed) {
+      document.getElementById('saved-note').textContent =
+        'We updated the answer already saved for ' + body.email + '.';
+    }
 
     const editLink = location.origin + '/p/' + POLL_ID + '?edit=' + encodeURIComponent(editToken);
     document.getElementById('respond-form').classList.add('hidden');
@@ -636,6 +657,9 @@ if (urlSecret) {
   history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
 }
 let pollData = null;
+// Addresses are organizer-only and come from a separate call, so the public
+// results JSON never carries them.
+let contactsById = {};
 let viewerTz = MeetgridViewer.getViewerTimezone(POLL_ID);
 
 function showError(msg) {
@@ -720,7 +744,10 @@ function renderResults(poll) {
   displaySlots.forEach(s => { table += '<th>' + slotHeader(s.label) + '</th>'; });
   table += '</tr></thead><tbody>';
   poll.responses.forEach(r => {
-    table += '<tr><td>' + escapeHtml(r.name) + '</td>';
+    const contact = contactsById[r.id];
+    const who = escapeHtml(r.name) +
+      (contact && contact.email ? '<span class="person-email">' + escapeHtml(contact.email) + '</span>' : '');
+    table += '<tr><td>' + who + '</td>';
     displaySlots.forEach(s => {
       const v = r.votes[s.id];
       const cell = v === true
@@ -755,10 +782,26 @@ function renderResults(poll) {
   }
 }
 
+async function loadContacts() {
+  if (!organizerSecret) return;
+  try {
+    const res = await fetch('/api/polls/' + POLL_ID + '/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ organizer_secret: organizerSecret }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    contactsById = {};
+    (data.respondents || []).forEach(r => { contactsById[r.id] = r; });
+  } catch (_) {}
+}
+
 async function loadPoll() {
   const res = await fetch('/api/polls/' + POLL_ID);
   const poll = await res.json();
   if (!res.ok) throw new Error(poll.error || 'Poll not found');
+  await loadContacts();
   viewerTz = MeetgridViewer.mountTimezoneBar(POLL_ID, poll.timezone, tz => {
     viewerTz = tz;
     if (pollData) renderResults(pollData);

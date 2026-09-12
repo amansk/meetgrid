@@ -9,8 +9,9 @@ import {
   insertPoll,
   insertRespondent,
   insertSlots,
+  rotateEditToken,
   setPollDecision,
-  updateRespondentName,
+  updateRespondentIdentity,
   replaceVotes,
 } from '../db/queries';
 import {
@@ -38,6 +39,21 @@ function jsonError(message: string, status = 400, code?: string) {
 
 function pollIdParam(raw: string): string | null {
   return parsePollId(raw);
+}
+
+/**
+ * Addresses are matched and stored lower-cased: the same person typing
+ * "Dave@Example.com" on a second device has to land on the same respondent, and
+ * the address is never rendered back to participants, so case carries nothing.
+ */
+function normalizeEmail(raw: string | undefined | null): string | null {
+  const trimmed = raw?.trim().toLocaleLowerCase();
+  return trimmed ? trimmed : null;
+}
+
+/** Deliberately loose: a shape check, not an attempt to decide deliverability. */
+function looksLikeEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
 
 async function loadPublicPoll(db: D1Database, pollId: string) {
@@ -241,6 +257,7 @@ api.get('/polls/:id/my-response', async (c) => {
   return c.json({
     respondent_id: matched.id,
     name: matched.name,
+    email: matched.email,
     votes: myVotes,
   });
 });
@@ -266,6 +283,9 @@ api.post('/polls/:id/respond', async (c) => {
   if (!body.name?.trim()) return jsonError('name is required');
   if (!Array.isArray(body.votes)) return jsonError('votes array is required');
 
+  const email = normalizeEmail(body.email);
+  if (email && !looksLikeEmail(email)) return jsonError('email does not look like an address');
+
   const slots = await getSlots(c.env.DB, pollId);
   const slotIds = new Set(slots.map((s) => s.id));
   for (const v of body.votes) {
@@ -275,6 +295,7 @@ api.post('/polls/:id/respond', async (c) => {
   const now = Date.now();
   let respondentId: string;
   let editToken: string;
+  let replacedExisting = false;
 
   if (body.edit_token) {
     const respondents = await getRespondents(c.env.DB, pollId);
@@ -288,37 +309,59 @@ api.post('/polls/:id/respond', async (c) => {
     if (!matched) return jsonError('Invalid edit token', 403);
     respondentId = matched.id;
     editToken = body.edit_token;
-    await updateRespondentName(c.env.DB, respondentId, body.name.trim(), now);
+    replacedExisting = true;
+    await updateRespondentIdentity(c.env.DB, respondentId, body.name.trim(), email, now);
   } else {
-    // No edit token: a name already on this poll is almost always the same person
-    // responding again from a second device or after clearing cookies, and silently
-    // adding a second respondent double-counts them in every tally. Refuse by
-    // default and tell them how to proceed. We deliberately do NOT merge into the
-    // existing respondent: without their edit token that would let anyone with the
-    // poll link overwrite someone else's votes by typing their name.
-    if (!body.allow_duplicate_name) {
-      const existing = await getRespondents(c.env.DB, pollId);
-      const wanted = body.name.trim().toLocaleLowerCase();
-      if (existing.some((r) => r.name.trim().toLocaleLowerCase() === wanted)) {
-        return jsonError(
-          `"${body.name.trim()}" has already responded to this poll. Open your edit link to change that response, or add something to your name if you are a different person.`,
-          409,
-          'duplicate_name'
-        );
-      }
-    }
+    if (!email) return jsonError('email is required', 400, 'email_required');
 
-    respondentId = generateId();
-    editToken = generateSecret();
-    const editTokenHash = await hashSecret(editToken);
-    await insertRespondent(c.env.DB, {
-      id: respondentId,
-      poll_id: pollId,
-      name: body.name.trim(),
-      edit_token_hash: editTokenHash,
-      created_at: now,
-      updated_at: now,
-    });
+    const existing = await getRespondents(c.env.DB, pollId);
+    const sameAddress = existing.find((r) => normalizeEmail(r.email) === email);
+
+    if (sameAddress) {
+      // The address is the identity: one person answering again from a second
+      // device, or after clearing cookies, updates the response they already have
+      // rather than appearing twice in every tally. Their votes are on the public
+      // results page already, so nothing private is exposed by letting an address
+      // alone claim them — and refusing instead would lock somebody out of their
+      // own response with no way back, since we cannot mail them their edit link.
+      respondentId = sameAddress.id;
+      replacedExisting = true;
+      // Only the hash of the original token is stored, so it cannot be handed
+      // back; issue a fresh one and retire the old edit link.
+      editToken = generateSecret();
+      await rotateEditToken(c.env.DB, respondentId, await hashSecret(editToken), now);
+      await updateRespondentIdentity(c.env.DB, respondentId, body.name.trim(), email, now);
+    } else {
+      // Two people called Dave with different addresses are two people, and go
+      // through cleanly. The name check below only bites on responses recorded
+      // before addresses were collected, where a name is all there is to match on.
+      if (!body.allow_duplicate_name) {
+        const wanted = body.name.trim().toLocaleLowerCase();
+        const legacyNameClash = existing.some(
+          (r) => !normalizeEmail(r.email) && r.name.trim().toLocaleLowerCase() === wanted
+        );
+        if (legacyNameClash) {
+          return jsonError(
+            `"${body.name.trim()}" already answered this poll before email addresses were collected, so there is no way to tell whether that was you. Open your edit link to change that response, or send this again to be added as a separate person.`,
+            409,
+            'duplicate_name'
+          );
+        }
+      }
+
+      respondentId = generateId();
+      editToken = generateSecret();
+      const editTokenHash = await hashSecret(editToken);
+      await insertRespondent(c.env.DB, {
+        id: respondentId,
+        poll_id: pollId,
+        name: body.name.trim(),
+        email,
+        edit_token_hash: editTokenHash,
+        created_at: now,
+        updated_at: now,
+      });
+    }
   }
 
   await replaceVotes(c.env.DB, respondentId, body.votes);
@@ -327,6 +370,7 @@ api.post('/polls/:id/respond', async (c) => {
   return c.json({
     respondent_id: respondentId,
     edit_token: editToken,
+    replaced_existing: replacedExisting,
     poll: view,
   });
 });
@@ -384,6 +428,41 @@ api.post('/polls/:id/close', async (c) => {
   await closePoll(c.env.DB, pollId);
   const view = await loadPublicPoll(c.env.DB, pollId);
   return c.json({ ok: true, poll: view });
+});
+
+/**
+ * Organizer-only contact list. Addresses are collected so the organizer can
+ * follow up and send the invite for the time that wins, so they are readable
+ * here and nowhere else: the public poll view never carries an address, which is
+ * why this is a separate call rather than a field on GET /polls/:id.
+ */
+api.post('/polls/:id/contacts', async (c) => {
+  if (!(await checkRateLimit(c.env, clientKey(c.req.raw)))) {
+    return jsonError('Rate limit exceeded', 429);
+  }
+
+  const pollId = pollIdParam(c.req.param('id'));
+  if (!pollId) return jsonError('Poll not found', 404);
+  let body: { organizer_secret?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return jsonError('Invalid JSON body');
+  }
+
+  if (!body.organizer_secret) return jsonError('organizer_secret is required');
+
+  const auth = await verifyOrganizer(c.env.DB, pollId, body.organizer_secret);
+  if (auth.error) return jsonError(auth.error, auth.status);
+
+  const respondents = await getRespondents(c.env.DB, pollId);
+  return c.json({
+    respondents: respondents.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+    })),
+  });
 });
 
 api.post('/polls/:id/slots', async (c) => {

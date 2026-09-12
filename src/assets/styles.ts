@@ -525,6 +525,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   letter-spacing: 0;
 }
 
+.field-hint {
+  margin: -0.625rem 0 1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Organizer view only — addresses are absent from the public results JSON. */
+.person-email {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 0.125rem;
+}
+
 a { color: var(--accent); text-underline-offset: 2px; }
 a:hover { color: var(--accent-hover); }
 

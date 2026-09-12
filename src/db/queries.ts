@@ -79,13 +79,14 @@ export async function insertRespondent(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO respondents (id, poll_id, name, edit_token_hash, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO respondents (id, poll_id, name, email, edit_token_hash, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       respondent.id,
       respondent.poll_id,
       respondent.name,
+      respondent.email,
       respondent.edit_token_hash,
       respondent.created_at,
       respondent.updated_at
@@ -93,15 +94,47 @@ export async function insertRespondent(
     .run();
 }
 
-export async function updateRespondentName(
+/**
+ * Update the display name, and the address when one is supplied. An omitted
+ * address leaves the stored one alone, so an edit-token response that predates
+ * address collection does not wipe an address added since.
+ */
+export async function updateRespondentIdentity(
   db: D1Database,
   respondentId: string,
   name: string,
+  email: string | null,
+  now: number
+): Promise<void> {
+  if (email === null) {
+    await db
+      .prepare('UPDATE respondents SET name = ?, updated_at = ? WHERE id = ?')
+      .bind(name, now, respondentId)
+      .run();
+    return;
+  }
+  await db
+    .prepare('UPDATE respondents SET name = ?, email = ?, updated_at = ? WHERE id = ?')
+    .bind(name, email, now, respondentId)
+    .run();
+}
+
+/**
+ * Issue a fresh edit token for an existing respondent. Needed when somebody
+ * re-answers under an address already on the poll: only the hash is stored, so
+ * their original token cannot be handed back and a new one takes its place.
+ * Their previous edit link stops working, which is the intended outcome — the
+ * most recent device to answer is the one that can keep editing.
+ */
+export async function rotateEditToken(
+  db: D1Database,
+  respondentId: string,
+  editTokenHash: string,
   now: number
 ): Promise<void> {
   await db
-    .prepare('UPDATE respondents SET name = ?, updated_at = ? WHERE id = ?')
-    .bind(name, now, respondentId)
+    .prepare('UPDATE respondents SET edit_token_hash = ?, updated_at = ? WHERE id = ?')
+    .bind(editTokenHash, now, respondentId)
     .run();
 }
 
