@@ -1,9 +1,5 @@
-import { Hono } from 'hono';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { createMeetgridMcpServer } from '../mcp/server';
-import type { Env } from '../types';
-
-const mcp = new Hono<{ Bindings: Env }>();
+import { createMeetgridMcpServer } from './server';
 
 const MCP_CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -25,21 +21,19 @@ function withCors(response: Response): Response {
   });
 }
 
-mcp.options('/mcp', () => new Response(null, { status: 204, headers: MCP_CORS }));
-
-mcp.all('/mcp', async (c) => {
-  if (c.req.method === 'OPTIONS') {
+/** Stateless Streamable HTTP MCP — new server + transport per request. */
+export async function handleMcpRequest(request: Request): Promise<Response> {
+  if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: MCP_CORS });
   }
 
-  const origin = new URL(c.req.url).origin;
+  const origin = new URL(request.url).origin;
   const transport = new WebStandardStreamableHTTPServerTransport();
   const server = createMeetgridMcpServer(origin);
 
   try {
     await server.connect(transport);
-    const response = await transport.handleRequest(c.req.raw);
-    return withCors(response);
+    return withCors(await transport.handleRequest(request));
   } catch (err) {
     console.error('MCP request failed:', err);
     return withCors(
@@ -53,6 +47,4 @@ mcp.all('/mcp', async (c) => {
       )
     );
   }
-});
-
-export default mcp;
+}

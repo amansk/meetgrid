@@ -13,7 +13,7 @@ import {
   updateRespondentName,
   replaceVotes,
 } from '../db/queries';
-import { daysBetween, MAX_POLL_DAYS, MAX_SLOTS } from '../lib/validate';
+import { daysBetween, MAX_POLL_DAYS, MAX_SLOTS, parsePollId } from '../lib/validate';
 import { generateId, generateSecret, hashSecret, verifySecret } from '../lib/crypto';
 import { buildPollView } from '../lib/poll-view';
 import { clientKey, checkRateLimit } from '../lib/rate-limit';
@@ -27,6 +27,10 @@ const api = new Hono<{ Bindings: Env }>();
 
 function jsonError(message: string, status = 400) {
   return Response.json({ error: message }, { status });
+}
+
+function pollIdParam(raw: string): string | null {
+  return parsePollId(raw);
 }
 
 async function loadPublicPoll(db: D1Database, pollId: string) {
@@ -179,7 +183,8 @@ api.post('/slots/generate', async (c) => {
 });
 
 api.get('/polls/:id', async (c) => {
-  const pollId = c.req.param('id');
+  const pollId = pollIdParam(c.req.param('id'));
+  if (!pollId) return jsonError('Poll not found', 404);
   const view = await loadPublicPoll(c.env.DB, pollId);
   if (!view) return jsonError('Poll not found', 404);
   return c.json(view);
@@ -190,7 +195,8 @@ api.get('/polls/:id/my-response', async (c) => {
     return jsonError('Rate limit exceeded', 429);
   }
 
-  const pollId = c.req.param('id');
+  const pollId = pollIdParam(c.req.param('id'));
+  if (!pollId) return jsonError('Poll not found', 404);
   const editToken = c.req.query('edit_token');
   if (!editToken) return jsonError('edit_token query param is required');
 
@@ -225,7 +231,8 @@ api.post('/polls/:id/respond', async (c) => {
     return jsonError('Rate limit exceeded', 429);
   }
 
-  const pollId = c.req.param('id');
+  const pollId = pollIdParam(c.req.param('id'));
+  if (!pollId) return jsonError('Poll not found', 404);
   const poll = await getPoll(c.env.DB, pollId);
   if (!poll) return jsonError('Poll not found', 404);
   if (poll.status === 'closed') return jsonError('Poll is closed', 403);
@@ -292,7 +299,8 @@ api.post('/polls/:id/decision', async (c) => {
     return jsonError('Rate limit exceeded', 429);
   }
 
-  const pollId = c.req.param('id');
+  const pollId = pollIdParam(c.req.param('id'));
+  if (!pollId) return jsonError('Poll not found', 404);
   let body: { organizer_secret?: string; slot_id?: string };
   try {
     body = await c.req.json();
@@ -322,7 +330,8 @@ api.post('/polls/:id/close', async (c) => {
     return jsonError('Rate limit exceeded', 429);
   }
 
-  const pollId = c.req.param('id');
+  const pollId = pollIdParam(c.req.param('id'));
+  if (!pollId) return jsonError('Poll not found', 404);
   let body: { organizer_secret?: string };
   try {
     body = await c.req.json();
@@ -345,7 +354,8 @@ api.post('/polls/:id/slots', async (c) => {
     return jsonError('Rate limit exceeded', 429);
   }
 
-  const pollId = c.req.param('id');
+  const pollId = pollIdParam(c.req.param('id'));
+  if (!pollId) return jsonError('Poll not found', 404);
   let body: {
     organizer_secret?: string;
     add?: Array<{ start_utc: string; end_utc: string }>;

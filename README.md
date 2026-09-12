@@ -60,11 +60,10 @@ npm run deploy
 
 ```
 ├── src/
-│   ├── index.ts           # Worker entry (Hono app)
-│   ├── mcp/               # HTTP MCP server factory
+│   ├── index.ts           # Worker entry (Hono app + /mcp Streamable HTTP)
+│   ├── mcp/               # MCP handler + tool registration
 │   ├── routes/
 │   │   ├── api.ts         # REST API
-│   │   ├── mcp.ts         # Streamable HTTP MCP at /mcp
 │   │   └── pages.ts       # HTML pages
 │   ├── db/queries.ts      # D1 queries
 │   └── lib/               # crypto, slots, timezone, rate-limit
@@ -184,7 +183,7 @@ curl -s -X POST http://localhost:8787/api/polls/POLL_ID/close \
 
 ## MCP server
 
-Meetgrid exposes MCP over **Streamable HTTP** at `/mcp` (same tools as the REST API). A stdio transport is also available for local CLI use.
+Meetgrid exposes MCP over **Streamable HTTP** at `/mcp` on the Worker itself (stateless `WebStandardStreamableHTTPServerTransport`, one server per request). Same tools as the REST API. A stdio transport is optional for local CLI use.
 
 ### Remote HTTP (recommended)
 
