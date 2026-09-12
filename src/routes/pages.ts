@@ -571,7 +571,7 @@ pages.get('/p/:id/results', (c) => {
     <div class="alert info">Organizer mode — you can pick a final slot and close the poll.</div>
   </div>
 
-  <div class="section-title">Best times <span class="link-muted">(by yes count)</span></div>
+  <div class="section-title">Best times <span class="link-muted">(most yes, fewest no)</span></div>
   <ol class="rank-list" id="ranked"></ol>
 
   <div class="section-title">Heatmap</div>
