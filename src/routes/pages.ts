@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import styles from '../assets/styles';
+import viewerClient from '../assets/viewer-client';
 import { parsePollId } from '../lib/validate';
 import type { Env } from '../types';
 
@@ -337,6 +338,18 @@ pages.get('/p/:id', (c) => {
     <p id="poll-notes"></p>
   </header>
 
+  <div class="tz-bar" id="viewer-tz-bar">
+    <label for="viewer-tz">Times shown in:</label>
+    <select id="viewer-tz" aria-label="Viewer timezone"></select>
+    <p class="link-muted tz-poll-note" id="poll-tz-note" hidden></p>
+  </div>
+
+  <div id="chosen-calendar" class="calendar-panel hidden">
+    <div class="section-title">Final time — add to calendar</div>
+    <p class="chosen-slot-when" id="chosen-slot-label"></p>
+    <div id="chosen-calendar-actions"></div>
+  </div>
+
   <div id="alert" class="alert error hidden"></div>
   <div id="closed-notice" class="alert info hidden">This poll is closed.</div>
 
@@ -362,10 +375,13 @@ pages.get('/p/:id', (c) => {
     </div>
   </div>
 </div>
+<script>${viewerClient}</script>
 <script>
 const POLL_ID = ${JSON.stringify(pollId)};
 const votes = {};
 let editToken = null;
+let pollData = null;
+let viewerTz = MeetgridViewer.getViewerTimezone(POLL_ID);
 
 function getCookie(name) {
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -414,6 +430,35 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function applyViewerTimezone(poll) {
+  pollData = poll;
+  const slots = MeetgridViewer.relabelSlots(poll.slots, viewerTz);
+  poll.slots.forEach(s => { if (!(s.id in votes)) votes[s.id] = null; });
+  renderSlots(slots);
+  renderChosenCalendar(poll, slots);
+}
+
+function renderChosenCalendar(poll, slots) {
+  const panel = document.getElementById('chosen-calendar');
+  if (!poll.chosen_slot_id) {
+    panel.classList.add('hidden');
+    return;
+  }
+  const slot = slots.find(s => s.id === poll.chosen_slot_id);
+  if (!slot) {
+    panel.classList.add('hidden');
+    return;
+  }
+  document.getElementById('chosen-slot-label').textContent = slot.label;
+  MeetgridViewer.renderCalendarActions(
+    document.getElementById('chosen-calendar-actions'),
+    poll,
+    slot,
+    false
+  );
+  panel.classList.remove('hidden');
+}
+
 async function loadPoll() {
   const res = await fetch('/api/polls/' + POLL_ID);
   const poll = await res.json();
@@ -422,13 +467,17 @@ async function loadPoll() {
   document.getElementById('poll-title').textContent = poll.title;
   document.getElementById('poll-notes').textContent = poll.notes || '';
 
+  viewerTz = MeetgridViewer.mountTimezoneBar(POLL_ID, poll.timezone, tz => {
+    viewerTz = tz;
+    applyViewerTimezone(pollData || poll);
+  });
+
   if (poll.status === 'closed') {
     document.getElementById('closed-notice').classList.remove('hidden');
     document.getElementById('respond-form').classList.add('hidden');
   }
 
-  poll.slots.forEach(s => { if (!(s.id in votes)) votes[s.id] = null; });
-  renderSlots(poll.slots);
+  applyViewerTimezone(poll);
 
   editToken = editToken || getCookie('meetgrid_edit_' + POLL_ID);
   if (editToken) {
@@ -438,7 +487,7 @@ async function loadPoll() {
         const me = await meRes.json();
         document.getElementById('name').value = me.name;
         Object.entries(me.votes).forEach(([slotId, yes]) => { votes[slotId] = yes; });
-        renderSlots(poll.slots);
+        applyViewerTimezone(poll);
       }
     } catch (_) {}
   } else {
@@ -565,6 +614,18 @@ pages.get('/p/:id/results', (c) => {
     <p id="poll-meta"></p>
   </header>
 
+  <div class="tz-bar" id="viewer-tz-bar">
+    <label for="viewer-tz">Times shown in:</label>
+    <select id="viewer-tz" aria-label="Viewer timezone"></select>
+    <p class="link-muted tz-poll-note" id="poll-tz-note" hidden></p>
+  </div>
+
+  <div id="chosen-calendar" class="calendar-panel hidden">
+    <div class="section-title">Add to calendar</div>
+    <p class="chosen-slot-when" id="chosen-slot-label"></p>
+    <div id="chosen-calendar-actions"></div>
+  </div>
+
   <div id="alert" class="alert error hidden"></div>
 
   <div id="organizer-panel" class="hidden">
@@ -591,6 +652,7 @@ pages.get('/p/:id/results', (c) => {
     <a class="btn secondary" href="/">Create new poll</a>
   </div>
 </div>
+<script>${viewerClient}</script>
 <script>
 const POLL_ID = ${JSON.stringify(pollId)};
 const urlParams = new URLSearchParams(location.search);
@@ -603,6 +665,7 @@ if (urlSecret) {
   history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
 }
 let pollData = null;
+let viewerTz = MeetgridViewer.getViewerTimezone(POLL_ID);
 
 function showError(msg) {
   const el = document.getElementById('alert');
@@ -633,16 +696,40 @@ function slotHeader(label) {
     '<span class="col-time">' + escapeHtml(parts.slice(1).join(' \u00b7 ')) + '</span>';
 }
 
+function renderChosenCalendar(poll, slotMap) {
+  const panel = document.getElementById('chosen-calendar');
+  if (!poll.chosen_slot_id) {
+    panel.classList.add('hidden');
+    return;
+  }
+  const slot = slotMap[poll.chosen_slot_id];
+  if (!slot) {
+    panel.classList.add('hidden');
+    return;
+  }
+  document.getElementById('chosen-slot-label').textContent = slot.label;
+  MeetgridViewer.renderCalendarActions(
+    document.getElementById('chosen-calendar-actions'),
+    poll,
+    slot,
+    false
+  );
+  panel.classList.remove('hidden');
+}
+
 function renderResults(poll) {
   pollData = poll;
   document.getElementById('poll-title').textContent = poll.title;
   const badges = [];
   if (poll.status === 'closed') badges.push('<span class="badge closed">Closed</span>');
   if (poll.chosen_slot_id) badges.push('<span class="badge chosen">Time chosen</span>');
-  document.getElementById('poll-meta').innerHTML = poll.timezone.replace(/_/g,' ') + ' · ' + poll.slots.length + ' slots ' + badges.join(' ');
+  document.getElementById('poll-meta').innerHTML = MeetgridViewer.formatTzName(poll.timezone) + ' · ' + poll.slots.length + ' slots ' + badges.join(' ');
 
-  const slotMap = Object.fromEntries(poll.slots.map(s => [s.id, s]));
-  const maxYes = Math.max(0, ...poll.slots.map(s => s.yes_count));
+  const displaySlots = MeetgridViewer.relabelSlots(poll.slots, viewerTz);
+  const slotMap = Object.fromEntries(displaySlots.map(s => [s.id, s]));
+  const maxYes = Math.max(0, ...displaySlots.map(s => s.yes_count));
+
+  renderChosenCalendar(poll, slotMap);
 
   const ranked = document.getElementById('ranked');
   ranked.innerHTML = poll.ranked_slot_ids.map((id, i) => {
@@ -651,18 +738,26 @@ function renderResults(poll) {
     const lead = i === 0 && !poll.chosen_slot_id && s.yes_count > 0 ? ' leader' : '';
     return '<li class="rank-item' + chosen + lead + '">' +
       '<span class="rank-when">' + escapeHtml(s.label) + '</span>' +
-      '<span class="tally">' +
-        '<span class="tally-yes">' + s.yes_count + ' yes</span>' +
-        (s.no_count ? '<span class="tally-no">' + s.no_count + ' no</span>' : '') +
+      '<span class="rank-side">' +
+        '<span class="tally">' +
+          '<span class="tally-yes">' + s.yes_count + ' yes</span>' +
+          (s.no_count ? '<span class="tally-no">' + s.no_count + ' no</span>' : '') +
+        '</span>' +
+        '<span class="rank-cal" data-slot-id="' + s.id + '"></span>' +
       '</span></li>';
   }).join('');
 
+  ranked.querySelectorAll('.rank-cal').forEach(el => {
+    const slot = slotMap[el.dataset.slotId];
+    if (slot) MeetgridViewer.renderCalendarActions(el, poll, slot, true);
+  });
+
   let table = '<table class="results-table"><thead><tr><th>Person</th>';
-  poll.slots.forEach(s => { table += '<th>' + slotHeader(s.label) + '</th>'; });
+  displaySlots.forEach(s => { table += '<th>' + slotHeader(s.label) + '</th>'; });
   table += '</tr></thead><tbody>';
   poll.responses.forEach(r => {
     table += '<tr><td>' + escapeHtml(r.name) + '</td>';
-    poll.slots.forEach(s => {
+    displaySlots.forEach(s => {
       const v = r.votes[s.id];
       const cell = v === true
         ? '<span class="mark-yes">\u2713</span>'
@@ -672,7 +767,7 @@ function renderResults(poll) {
     table += '</tr>';
   });
   table += '<tr class="totals"><td><strong>Yes total</strong></td>';
-  poll.slots.forEach(s => {
+  displaySlots.forEach(s => {
     table += '<td class="' + heatClass(s.yes_count, maxYes) + '"><strong>' + s.yes_count + '</strong>' +
       (s.no_count ? '<span class="cell-no">' + s.no_count + ' no</span>' : '') + '</td>';
   });
@@ -699,6 +794,10 @@ async function loadPoll() {
   const res = await fetch('/api/polls/' + POLL_ID);
   const poll = await res.json();
   if (!res.ok) throw new Error(poll.error || 'Poll not found');
+  viewerTz = MeetgridViewer.mountTimezoneBar(POLL_ID, poll.timezone, tz => {
+    viewerTz = tz;
+    if (pollData) renderResults(pollData);
+  });
   renderResults(poll);
 }
 

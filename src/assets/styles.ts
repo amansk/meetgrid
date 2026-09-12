@@ -408,6 +408,100 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .heat-4 { background: var(--heat-4) !important; color: #fff; }
 .heat-3 .cell-no, .heat-4 .cell-no { color: #fff; opacity: 0.75; }
 
+/* ---------- viewer timezone + calendar ---------- */
+
+.tz-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1.25rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  font-size: 0.875rem;
+}
+
+.tz-bar label {
+  margin: 0;
+  font-weight: 550;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tz-bar select {
+  width: auto;
+  min-width: 12rem;
+  max-width: 100%;
+  flex: 1 1 12rem;
+  margin: 0;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.625rem;
+}
+
+.tz-poll-note {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.calendar-panel {
+  margin-bottom: 1.25rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.calendar-panel .section-title { margin-top: 0; }
+
+.chosen-slot-when {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.calendar-actions .btn,
+.calendar-actions button { width: auto; margin: 0; }
+
+.rank-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.rank-cal {
+  display: flex;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.cal-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cal-link:hover { color: var(--accent-hover); }
+
+button.cal-link { width: auto; }
+
 /* ---------- misc ---------- */
 
 .badge {

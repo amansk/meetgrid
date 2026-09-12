@@ -55,8 +55,8 @@ function getZonedParts(date: Date, timeZone: string) {
   };
 }
 
-/** Format UTC ISO string for display in poll timezone. */
-export function formatSlotLabel(startUtc: string, endUtc: string, timeZone: string): string {
+/** Format UTC slot times for display in any IANA timezone. */
+export function formatSlotLabelInZone(startUtc: string, endUtc: string, timeZone: string): string {
   const start = new Date(startUtc);
   const end = new Date(endUtc);
 
@@ -78,6 +78,9 @@ export function formatSlotLabel(startUtc: string, endUtc: string, timeZone: stri
   const endTime = timeFmt.format(end);
   return `${datePart} · ${startTime} – ${endTime}`;
 }
+
+/** @deprecated Use formatSlotLabelInZone — kept for callers that name the poll timezone explicitly. */
+export const formatSlotLabel = formatSlotLabelInZone;
 
 /** ISO weekday 1=Mon … 7=Sun for a YYYY-MM-DD date in timezone. */
 export function isoWeekdayInTimezone(dateStr: string, timeZone: string): number {
