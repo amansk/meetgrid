@@ -61,8 +61,10 @@ npm run deploy
 ```
 ├── src/
 │   ├── index.ts           # Worker entry (Hono app)
+│   ├── mcp/               # HTTP MCP server factory
 │   ├── routes/
 │   │   ├── api.ts         # REST API
+│   │   ├── mcp.ts         # Streamable HTTP MCP at /mcp
 │   │   └── pages.ts       # HTML pages
 │   ├── db/queries.ts      # D1 queries
 │   └── lib/               # crypto, slots, timezone, rate-limit
@@ -247,6 +249,16 @@ Set `MEETGRID_API_URL` to your worker URL (defaults to `http://127.0.0.1:8787`).
 | `poll_close` | Organizer closes poll |
 
 Organizer secrets are returned only from `poll_create` — never from `poll_get`.
+
+### Auth (v0)
+
+Meetgrid MCP matches the app’s **no-login** model: the `/mcp` endpoint is public and tools call the same REST API as the web UI. There is no OAuth or MCP-level authentication in v0.
+
+- **Create:** `poll_create` returns `organizer_secret` once in the response — save it; it is not retrievable later.
+- **Organizer actions:** pass `organizer_secret` to `poll_set_decision` and `poll_close`.
+- **Respond:** `poll_respond` returns an `edit_token` for the respondent to update their votes.
+
+Do not treat MCP as a private admin API — anyone who can reach `/mcp` can create polls and respond. Protect the endpoint at the network layer if you need restriction (not implemented in v0).
 
 ## Security model
 
