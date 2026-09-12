@@ -1,16 +1,29 @@
+export type Fetcher = (request: Request) => Response | Promise<Response>;
+
 export class MeetgridClient {
-  constructor(private baseUrl: string) {
+  /**
+   * `fetcher` dispatches straight into this Worker's own router. Going out over
+   * the network instead would make the Worker request its own public hostname,
+   * which loops back through the edge to this same Worker and times out (522) —
+   * so every tool call failed while the REST API it wraps was healthy.
+   */
+  constructor(
+    private baseUrl: string,
+    private fetcher: Fetcher = (request) => fetch(request)
+  ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
-      },
-    });
+    const res = await this.fetcher(
+      new Request(`${this.baseUrl}${path}`, {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(init?.headers ?? {}),
+        },
+      })
+    );
     const data = (await res.json()) as T & { error?: string };
     if (!res.ok) {
       throw new Error(data.error ?? `HTTP ${res.status}`);

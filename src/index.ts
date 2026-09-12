@@ -22,7 +22,8 @@ export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/mcp') {
-      return handleMcpRequest(request);
+      // Serve the MCP tools from this same isolate rather than over the network.
+      return handleMcpRequest(request, (req) => app.fetch(req, env, ctx));
     }
     return app.fetch(request, env, ctx);
   },

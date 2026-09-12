@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { MeetgridClient } from './client';
+import { MeetgridClient, type Fetcher } from './client';
 import { resolveVoteEntries, shapePollReadResponse } from './ergonomics';
 import type { PollPublicView } from '../lib/poll-view';
 
@@ -18,8 +18,8 @@ const voteEntrySchema = z.object({
 });
 
 /** Stateless MCP server factory — new instance per HTTP request. */
-export function createMeetgridMcpServer(apiBaseUrl: string): McpServer {
-  const client = new MeetgridClient(apiBaseUrl);
+export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): McpServer {
+  const client = new MeetgridClient(apiBaseUrl, fetcher);
 
   const server = new McpServer({
     name: 'meetgrid',

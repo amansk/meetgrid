@@ -1,5 +1,6 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { createMeetgridMcpServer } from './server';
+import type { Fetcher } from './client';
 
 const MCP_CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -22,14 +23,14 @@ function withCors(response: Response): Response {
 }
 
 /** Stateless Streamable HTTP MCP — new server + transport per request. */
-export async function handleMcpRequest(request: Request): Promise<Response> {
+export async function handleMcpRequest(request: Request, fetcher?: Fetcher): Promise<Response> {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: MCP_CORS });
   }
 
   const origin = new URL(request.url).origin;
   const transport = new WebStandardStreamableHTTPServerTransport();
-  const server = createMeetgridMcpServer(origin);
+  const server = createMeetgridMcpServer(origin, fetcher);
 
   try {
     await server.connect(transport);
