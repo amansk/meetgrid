@@ -454,6 +454,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   box-shadow: var(--shadow);
 }
 
+#organizer-panel .calendar-panel {
+  margin-top: 1rem;
+  margin-bottom: 0;
+  border-color: var(--accent);
+}
+
 .calendar-panel .section-title { margin-top: 0; }
 
 .chosen-slot-when {
@@ -471,36 +477,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .calendar-actions .btn,
 .calendar-actions button { width: auto; margin: 0; }
-
-.rank-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-  flex-shrink: 0;
-}
-
-.rank-cal {
-  display: flex;
-  gap: 0.375rem;
-  font-size: 0.75rem;
-}
-
-.cal-link {
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  font-size: inherit;
-  color: var(--accent);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.cal-link:hover { color: var(--accent-hover); }
-
-button.cal-link { width: auto; }
 
 /* ---------- misc ---------- */
 

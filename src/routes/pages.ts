@@ -344,12 +344,6 @@ pages.get('/p/:id', (c) => {
     <p class="link-muted tz-poll-note" id="poll-tz-note" hidden></p>
   </div>
 
-  <div id="chosen-calendar" class="calendar-panel hidden">
-    <div class="section-title">Final time — add to calendar</div>
-    <p class="chosen-slot-when" id="chosen-slot-label"></p>
-    <div id="chosen-calendar-actions"></div>
-  </div>
-
   <div id="alert" class="alert error hidden"></div>
   <div id="closed-notice" class="alert info hidden">This poll is closed.</div>
 
@@ -435,28 +429,6 @@ function applyViewerTimezone(poll) {
   const slots = MeetgridViewer.relabelSlots(poll.slots, viewerTz);
   poll.slots.forEach(s => { if (!(s.id in votes)) votes[s.id] = null; });
   renderSlots(slots);
-  renderChosenCalendar(poll, slots);
-}
-
-function renderChosenCalendar(poll, slots) {
-  const panel = document.getElementById('chosen-calendar');
-  if (!poll.chosen_slot_id) {
-    panel.classList.add('hidden');
-    return;
-  }
-  const slot = slots.find(s => s.id === poll.chosen_slot_id);
-  if (!slot) {
-    panel.classList.add('hidden');
-    return;
-  }
-  document.getElementById('chosen-slot-label').textContent = slot.label;
-  MeetgridViewer.renderCalendarActions(
-    document.getElementById('chosen-calendar-actions'),
-    poll,
-    slot,
-    false
-  );
-  panel.classList.remove('hidden');
 }
 
 async function loadPoll() {
@@ -620,16 +592,15 @@ pages.get('/p/:id/results', (c) => {
     <p class="link-muted tz-poll-note" id="poll-tz-note" hidden></p>
   </div>
 
-  <div id="chosen-calendar" class="calendar-panel hidden">
-    <div class="section-title">Add to calendar</div>
-    <p class="chosen-slot-when" id="chosen-slot-label"></p>
-    <div id="chosen-calendar-actions"></div>
-  </div>
-
   <div id="alert" class="alert error hidden"></div>
 
   <div id="organizer-panel" class="hidden">
     <div class="alert info">Organizer mode — you can pick a final slot and close the poll.</div>
+    <div id="organizer-calendar" class="calendar-panel hidden">
+      <div class="section-title">Add final time to your calendar</div>
+      <p class="chosen-slot-when" id="chosen-slot-label"></p>
+      <div id="chosen-calendar-actions"></div>
+    </div>
   </div>
 
   <div class="section-title">Best times <span class="link-muted">(most yes, fewest no)</span></div>
@@ -696,9 +667,10 @@ function slotHeader(label) {
     '<span class="col-time">' + escapeHtml(parts.slice(1).join(' \u00b7 ')) + '</span>';
 }
 
-function renderChosenCalendar(poll, slotMap) {
-  const panel = document.getElementById('chosen-calendar');
-  if (!poll.chosen_slot_id) {
+function renderOrganizerCalendar(poll, slotMap) {
+  const panel = document.getElementById('organizer-calendar');
+  if (!panel) return;
+  if (!organizerSecret || !poll.chosen_slot_id) {
     panel.classList.add('hidden');
     return;
   }
@@ -711,8 +683,7 @@ function renderChosenCalendar(poll, slotMap) {
   MeetgridViewer.renderCalendarActions(
     document.getElementById('chosen-calendar-actions'),
     poll,
-    slot,
-    false
+    slot
   );
   panel.classList.remove('hidden');
 }
@@ -729,28 +700,21 @@ function renderResults(poll) {
   const slotMap = Object.fromEntries(displaySlots.map(s => [s.id, s]));
   const maxYes = Math.max(0, ...displaySlots.map(s => s.yes_count));
 
-  renderChosenCalendar(poll, slotMap);
+  renderOrganizerCalendar(poll, slotMap);
 
   const ranked = document.getElementById('ranked');
   ranked.innerHTML = poll.ranked_slot_ids.map((id, i) => {
     const s = slotMap[id];
+    if (!s) return '';
     const chosen = poll.chosen_slot_id === id ? ' chosen' : '';
     const lead = i === 0 && !poll.chosen_slot_id && s.yes_count > 0 ? ' leader' : '';
     return '<li class="rank-item' + chosen + lead + '">' +
       '<span class="rank-when">' + escapeHtml(s.label) + '</span>' +
-      '<span class="rank-side">' +
-        '<span class="tally">' +
-          '<span class="tally-yes">' + s.yes_count + ' yes</span>' +
-          (s.no_count ? '<span class="tally-no">' + s.no_count + ' no</span>' : '') +
-        '</span>' +
-        '<span class="rank-cal" data-slot-id="' + s.id + '"></span>' +
+      '<span class="tally">' +
+        '<span class="tally-yes">' + s.yes_count + ' yes</span>' +
+        (s.no_count ? '<span class="tally-no">' + s.no_count + ' no</span>' : '') +
       '</span></li>';
   }).join('');
-
-  ranked.querySelectorAll('.rank-cal').forEach(el => {
-    const slot = slotMap[el.dataset.slotId];
-    if (slot) MeetgridViewer.renderCalendarActions(el, poll, slot, true);
-  });
 
   let table = '<table class="results-table"><thead><tr><th>Person</th>';
   displaySlots.forEach(s => { table += '<th>' + slotHeader(s.label) + '</th>'; });
@@ -782,6 +746,7 @@ function renderResults(poll) {
     // actually favours rather than whichever one happens to be earliest.
     sel.innerHTML = poll.ranked_slot_ids.map((id, i) => {
       const s = slotMap[id];
+      if (!s) return '';
       const selected = poll.chosen_slot_id ? poll.chosen_slot_id === s.id : i === 0;
       return '<option value="' + s.id + '"' + (selected ? ' selected' : '') + '>' +
         escapeHtml(s.label) + ' — ' + s.yes_count + ' yes' + (s.no_count ? ', ' + s.no_count + ' no' : '') +
