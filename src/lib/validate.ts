@@ -50,18 +50,20 @@ export function parseCustomSlug(
 export function resolveCreatePollId(body: {
   poll_id?: string;
   slug?: string;
+  name?: string;
 }): { ok: true; pollId: string | null } | { ok: false; error: string } {
-  const slugRaw = body.slug?.trim();
-  const pollIdRaw = body.poll_id?.trim();
+  const candidates = [body.slug, body.poll_id, body.name]
+    .map((s) => s?.trim())
+    .filter((s): s is string => !!s);
 
-  if (slugRaw && pollIdRaw && slugRaw.toLowerCase() !== pollIdRaw.toLowerCase()) {
-    return { ok: false, error: 'slug and poll_id must match when both are provided' };
+  if (candidates.length === 0) return { ok: true, pollId: null };
+
+  const normalized = candidates.map((c) => c.toLowerCase());
+  if (!normalized.every((n) => n === normalized[0])) {
+    return { ok: false, error: 'slug, poll_id, and name must match when multiple are provided' };
   }
 
-  const custom = slugRaw || pollIdRaw;
-  if (!custom) return { ok: true, pollId: null };
-
-  const parsed = parseCustomSlug(custom);
+  const parsed = parseCustomSlug(candidates[0]);
   if (!parsed.ok) return parsed;
   return { ok: true, pollId: parsed.slug };
 }

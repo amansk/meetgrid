@@ -52,9 +52,10 @@ export interface ExplicitSlotInput {
 export interface CreatePollBody {
   title: string;
   notes?: string;
-  /** Optional custom poll URL segment (alias: slug). Random ID when omitted. */
+  /** Optional custom poll URL segment (aliases: slug, name). Random ID when omitted. */
   poll_id?: string;
   slug?: string;
+  name?: string;
   timezone: string;
   /** Explicit slots — preferred over range generation when provided. */
   slots?: ExplicitSlotInput[];

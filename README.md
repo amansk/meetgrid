@@ -125,7 +125,7 @@ curl -s -X POST http://localhost:8787/api/polls \
   }'
 ```
 
-Save `poll_id`, `organizer_secret`, and `poll_url` from the response. Optionally set a custom link with `"slug": "team-sync"` (or `"poll_id"`) — lowercase letters, digits, and hyphens, 3–48 chars; returns 409 if taken.
+Save `poll_id`, `organizer_secret`, and `poll_url` from the response. Optionally set a custom link with `"slug": "team-sync"` (or `"poll_id"` / `"name"`) — lowercase letters, digits, and hyphens, 3–48 chars; returns 409 if taken.
 
 ```bash
 curl -s -X POST http://localhost:8787/api/polls \

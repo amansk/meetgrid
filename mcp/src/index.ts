@@ -55,6 +55,10 @@ server.tool(
       .string()
       .optional()
       .describe('Alias for slug — same validation and behavior.'),
+    name: z
+      .string()
+      .optional()
+      .describe('Optional custom poll link name/slug (e.g. team-sync → /p/team-sync). Alias of slug.'),
   },
   async (args) => {
     const result = await client.createPoll(args);

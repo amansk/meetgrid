@@ -23,6 +23,7 @@ export class MeetgridClient {
     notes?: string;
     slug?: string;
     poll_id?: string;
+    name?: string;
     timezone: string;
     slots?: Array<{
       date?: string;
