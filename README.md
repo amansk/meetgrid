@@ -12,7 +12,7 @@ Create a poll, share a link, collect Yes/No availability, pick a time, and close
 
 - **Yes / No only** — no maybe votes
 - **Manual time slots** (Doodle-style) — add date, start time, and duration per option; optional range generator
-- **No accounts** — unguessable poll IDs, organizer secrets, and per-respondent edit tokens
+- **No accounts** — unguessable poll IDs (or optional custom link slug), organizer secrets, and per-respondent edit tokens
 - **Timezone-aware** — required on create; defaults to `America/Los_Angeles` in the UI
 - **Three thin pages** — Create, Respond, Results (mobile-first, form aesthetic)
 - **MCP tools** for agents — same HTTP API the UI uses
@@ -125,7 +125,18 @@ curl -s -X POST http://localhost:8787/api/polls \
   }'
 ```
 
-Save `poll_id`, `organizer_secret`, and `poll_url` from the response.
+Save `poll_id`, `organizer_secret`, and `poll_url` from the response. Optionally set a custom link with `"slug": "team-sync"` (or `"poll_id"`) — lowercase letters, digits, and hyphens, 3–48 chars; returns 409 if taken.
+
+```bash
+curl -s -X POST http://localhost:8787/api/polls \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Team sync",
+    "slug": "team-sync-sept",
+    "timezone": "America/Los_Angeles",
+    "slots": [{"date": "2026-09-15", "start_time": "10:00", "duration_minutes": 30}]
+  }'
+```
 
 **Get poll (public)**
 

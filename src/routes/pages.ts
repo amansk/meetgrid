@@ -57,6 +57,10 @@ pages.get('/', (c) => {
     <label for="notes">Notes <span class="link-muted">(optional)</span></label>
     <textarea id="notes" name="notes" placeholder="Any context for respondents"></textarea>
 
+    <label for="custom_slug">Custom link <span class="link-muted">(optional)</span></label>
+    <input type="text" id="custom_slug" name="custom_slug" placeholder="team-sync" autocomplete="off" spellcheck="false">
+    <p class="link-muted slug-preview" id="slug-preview">Leave blank for a random link like …/p/xK9mP2nQ4vLr</p>
+
     <label for="timezone">Timezone</label>
     <select id="timezone" name="timezone"></select>
 
@@ -222,6 +226,18 @@ function showError(msg) {
   el.classList.remove('hidden');
 }
 
+function updateSlugPreview() {
+  const raw = document.getElementById('custom_slug').value.trim().toLowerCase();
+  const el = document.getElementById('slug-preview');
+  if (!raw) {
+    el.textContent = 'Leave blank for a random link like …/p/xK9mP2nQ4vLr';
+    return;
+  }
+  el.textContent = location.origin + '/p/' + raw.replace(/[^a-z0-9-]/g, '');
+}
+
+document.getElementById('custom_slug').addEventListener('input', updateSlugPreview);
+
 document.getElementById('add-slot').addEventListener('click', () => {
   manualSlots.push(defaultSlot());
   renderSlotList();
@@ -265,9 +281,11 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = 'Creating…';
 
+  const customSlug = document.getElementById('custom_slug').value.trim();
   const body = {
     title: document.getElementById('title').value,
     notes: document.getElementById('notes').value || undefined,
+    slug: customSlug || undefined,
     timezone: document.getElementById('timezone').value,
     slots: manualSlots.map(s => ({ date: s.date, start_time: s.start_time, duration_minutes: s.duration_minutes })),
   };

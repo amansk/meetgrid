@@ -45,6 +45,14 @@ export function createMeetgridMcpServer(apiBaseUrl: string): McpServer {
         .array(z.number().int().min(1).max(7))
         .optional()
         .describe('Range generator: ISO weekdays (1=Mon … 7=Sun). Omit for all days.'),
+      slug: z
+        .string()
+        .optional()
+        .describe('Optional custom poll URL segment (e.g. team-sync → /p/team-sync). Random ID when omitted.'),
+      poll_id: z
+        .string()
+        .optional()
+        .describe('Alias for slug — same validation and behavior.'),
     },
     async (args) => {
       const result = await client.createPoll(args);
