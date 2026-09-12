@@ -154,3 +154,22 @@ export async function deleteSlots(db: D1Database, pollId: string, slotIds: strin
   );
   if (stmts.length) await db.batch(stmts);
 }
+
+/**
+ * Hard-delete a poll and everything hanging off it. Rows are removed explicitly
+ * rather than relying on ON DELETE CASCADE, so this behaves the same whether or
+ * not foreign keys are enforced on the connection. Ordered children-first and
+ * run as one batch so a partial delete cannot leave orphaned votes behind.
+ */
+export async function deletePoll(db: D1Database, pollId: string): Promise<void> {
+  await db.batch([
+    db
+      .prepare(
+        'DELETE FROM votes WHERE respondent_id IN (SELECT id FROM respondents WHERE poll_id = ?)'
+      )
+      .bind(pollId),
+    db.prepare('DELETE FROM respondents WHERE poll_id = ?').bind(pollId),
+    db.prepare('DELETE FROM slots WHERE poll_id = ?').bind(pollId),
+    db.prepare('DELETE FROM polls WHERE id = ?').bind(pollId),
+  ]);
+}

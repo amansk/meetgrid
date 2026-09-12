@@ -5,17 +5,38 @@ import { resolveVoteEntries, shapePollReadResponse } from './ergonomics';
 import type { PollPublicView } from '../lib/poll-view';
 
 const explicitSlotSchema = z.object({
-  date: z.string().optional().describe('Local date YYYY-MM-DD in poll timezone'),
-  start_time: z.string().optional().describe('Local start time HH:MM'),
-  duration_minutes: z.number().int().min(15).max(480).optional().describe('Slot length in minutes'),
-  start_utc: z.string().optional().describe('UTC ISO start (alternative to date+start_time+duration)'),
-  end_utc: z.string().optional().describe('UTC ISO end (alternative to date+start_time+duration)'),
+  date: z.string().optional().describe('Local calendar date, YYYY-MM-DD, read in the poll timezone'),
+  start_time: z
+    .string()
+    .optional()
+    .describe('Local start time, 24-hour HH:MM, read in the poll timezone'),
+  duration_minutes: z
+    .number()
+    .int()
+    .min(15)
+    .max(480)
+    .optional()
+    .describe('Length of this slot, 15 to 480 minutes. Falls back to the poll duration_minutes.'),
+  start_utc: z
+    .string()
+    .optional()
+    .describe('ISO instant, e.g. 2026-10-02T23:00:00.000Z. Use instead of date + start_time, not as well as.'),
+  end_utc: z.string().optional().describe('ISO instant ending the slot. Required alongside start_utc.'),
 });
 
 const voteEntrySchema = z.object({
-  slot_id: z.string(),
-  yes: z.boolean(),
+  slot_id: z.string().describe('A slot id from poll_get — not an index, a label or a time'),
+  yes: z.boolean().describe('true = available, false = not available'),
 });
+
+const POLL_ID_DESC =
+  'The poll id, as returned by poll_create and as it appears in the poll URL (/p/<poll_id>)';
+
+const ORGANIZER_SECRET_DESC =
+  'The organizer_secret returned by poll_create. A capability token rather than a password: whoever holds it controls the poll. Never put it anywhere participants can read.';
+
+const ALLOW_DUPLICATE_NAME_DESC =
+  'Responding without an edit_token under a name already on the poll fails with code "duplicate_name", because it would count that person twice. Set true only to add a genuinely different person who happens to share the name.';
 
 /** Stateless MCP server factory — new instance per HTTP request. */
 export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): McpServer {
@@ -23,47 +44,73 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
 
   const server = new McpServer({
     name: 'meetgrid',
-    version: '1.0.0',
+    version: '1.1.0',
   });
 
   server.tool(
     'poll_create',
-    'Create a Meetgrid poll. Prefer explicit slots array; range fields are optional fallback for grid generation.',
+    [
+      'Create a scheduling poll and get back the links to share. Nobody needs an account, to create one or to answer one.',
+      '',
+      'Give the times ONE of two ways:',
+      '1. `slots` — an explicit list. Right for scattered dates, and the only way to have different windows on different days (6pm Friday, 10am Saturday). This is the one to reach for most of the time.',
+      '2. The range generator — `start_date`, `end_date`, `daily_start`, `daily_end` and `duration_minutes` together, which fills the same daily window on every date with back-to-back slots. Only worth it when every day really does have the same window.',
+      'Supplying neither fails. `slots` wins if you supply both. `title` and `timezone` are always required.',
+      '',
+      'Returns poll_id, poll_url (the link for participants), results_url (public), organizer_url and organizer_secret. That secret is a capability token granting full control of the poll, deletion included — keep it for the organizer calls and do not paste it into anything participants can read.',
+    ].join('\n'),
     {
-      title: z.string().describe('Poll title'),
-      notes: z.string().optional().describe('Optional notes for respondents'),
-      timezone: z.string().describe('IANA timezone, e.g. America/Los_Angeles'),
+      title: z
+        .string()
+        .describe('The heading on the poll, e.g. "Forum meeting — rescheduled date"'),
+      notes: z
+        .string()
+        .optional()
+        .describe('Free text under the title, for context participants need before they answer'),
+      timezone: z
+        .string()
+        .describe(
+          'IANA name, e.g. America/Chicago. The zone the slot times are written in, and the zone everyone sees times in by default. Not a UTC offset and not an abbreviation like CT.'
+        ),
       slots: z
         .array(explicitSlotSchema)
         .optional()
-        .describe('Explicit time options (preferred). Each slot: date+start_time+duration_minutes or start_utc+end_utc.'),
+        .describe(
+          'The time options, in the order participants should see them. Each entry is either date + start_time (+ duration_minutes), or start_utc + end_utc.'
+        ),
       duration_minutes: z
         .number()
         .int()
         .min(15)
         .max(480)
         .optional()
-        .describe('Default duration metadata; required for range generation, inferred from slots otherwise'),
-      start_date: z.string().optional().describe('Range generator: first date YYYY-MM-DD'),
-      end_date: z.string().optional().describe('Range generator: last date YYYY-MM-DD'),
-      daily_start: z.string().optional().describe('Range generator: daily window start HH:MM'),
-      daily_end: z.string().optional().describe('Range generator: daily window end HH:MM'),
+        .describe('Default slot length. Required for the range generator; inferred from `slots` otherwise.'),
+      start_date: z.string().optional().describe('Range generator only: first date, YYYY-MM-DD'),
+      end_date: z
+        .string()
+        .optional()
+        .describe('Range generator only: last date, YYYY-MM-DD, on or after start_date'),
+      daily_start: z.string().optional().describe('Range generator only: window opens at HH:MM, local'),
+      daily_end: z.string().optional().describe('Range generator only: window closes at HH:MM, local'),
       weekdays: z
         .array(z.number().int().min(1).max(7))
         .optional()
-        .describe('Range generator: ISO weekdays (1=Mon … 7=Sun). Omit for all days.'),
+        .describe(
+          'Range generator only: restrict to these ISO weekdays (1=Mon … 7=Sun). Omit for every day in the range.'
+        ),
       slug: z
         .string()
         .optional()
-        .describe('Optional custom poll URL segment (e.g. team-sync → /p/team-sync). Random ID when omitted.'),
+        .describe(
+          'Custom URL segment, putting the poll at /p/<slug> instead of a random id, e.g. "team-sync". Lower-case letters, digits and hyphens. Fails with 409 if taken. Omit for a random id, which is also what keeps an unlisted poll hard to stumble on.'
+        ),
       poll_id: z
         .string()
         .optional()
-        .describe('Alias for slug — same validation and behavior.'),
-      name: z
-        .string()
-        .optional()
-        .describe('Optional custom poll link name/slug (e.g. team-sync → /p/team-sync). Alias of slug.'),
+        .describe(
+          'Alias of `slug`, kept for existing callers. Prefer `slug`: on every other tool `poll_id` names an existing poll, so this spelling reads as the wrong thing.'
+        ),
+      name: z.string().optional().describe('Alias of `slug`, kept for existing callers. Prefer `slug`.'),
     },
     async (args) => {
       const result = await client.createPoll(args);
@@ -75,9 +122,14 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
 
   server.tool(
     'poll_get',
-    'Get public poll details, slots, responses, and ranked results. Never returns organizer_secret.',
+    [
+      'Read a poll: title, notes, timezone, status (open or closed), the chosen slot if the organizer has picked one, every time slot with its id, label, yes_count and no_count, who has answered and how, and `ranked_slot_ids` ordered best first (most yes, fewest no, then earliest).',
+      '',
+      'Use it for any read — checking results, and getting the slot ids poll_respond needs. Safe to show anyone: it never returns the organizer secret.',
+      'Fails with 404 on an unknown poll id, or one that has been deleted.',
+    ].join('\n'),
     {
-      poll_id: z.string().describe('Public poll ID'),
+      poll_id: z.string().describe(POLL_ID_DESC),
     },
     async ({ poll_id }) => {
       const result = await client.getPoll(poll_id);
@@ -89,9 +141,12 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
 
   server.tool(
     'read_poll',
-    'Read a poll and its options for voting. Same data as poll_get, with an `options` list (id, label, yes_count, no_count) for each time slot.',
+    [
+      'Alias of poll_get for clients that expect an `options` key: everything poll_get returns, plus an `options` array of { id, label, yes_count, no_count } mirroring `slots`.',
+      'Prefer poll_get. Same data, same permissions, one redundant copy of the slots.',
+    ].join('\n'),
     {
-      poll_id: z.string().describe('Public poll ID'),
+      poll_id: z.string().describe(POLL_ID_DESC),
     },
     async ({ poll_id }) => {
       const result = (await client.getPoll(poll_id)) as PollPublicView;
@@ -103,25 +158,30 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
 
   server.tool(
     'poll_respond',
-    'Submit or update availability for a poll. Returns an edit_token for future changes.',
+    [
+      'Answer a poll as one person, or change what that person already said. Call poll_get first: every vote is keyed by slot id.',
+      '',
+      'Answering again under a name already on the poll fails with code "duplicate_name" rather than quietly counting that person twice. Pass the edit_token to change an existing answer, or allow_duplicate_name to add a genuinely different person with the same name.',
+      'A slot left out of `slot_votes` is recorded as no answer, which is not the same as a no. Send an entry for every slot you mean to answer.',
+      '',
+      'Returns respondent_id and edit_token. Keep the edit_token: it is the only way to change this response later and the server cannot give it back.',
+      'Fails if the poll is closed.',
+    ].join('\n'),
     {
-      poll_id: z.string().describe('Public poll ID'),
-      respondent_name: z.string().describe('Display name for the respondent'),
-      edit_token: z.string().optional().describe('Existing edit token to update a prior response'),
-      slot_votes: z
-        .array(
-          z.object({
-            slot_id: z.string(),
-            yes: z.boolean(),
-          })
-        )
-        .describe('Yes/no votes per slot'),
-      allow_duplicate_name: z
-        .boolean()
+      poll_id: z.string().describe(POLL_ID_DESC),
+      respondent_name: z
+        .string()
+        .describe('Display name for this person, shown to everyone who can see the results'),
+      edit_token: z
+        .string()
         .optional()
         .describe(
-          'Responding without an edit_token under a name already on the poll fails with code "duplicate_name", because it would count that person twice. Set true only to add a genuinely different person with the same name.'
+          'The edit_token from this person’s earlier response, to change it. With a token the address is optional and the name can change freely.'
         ),
+      slot_votes: z
+        .array(voteEntrySchema)
+        .describe('One entry per slot being answered: { slot_id, yes }. Omitted slots stay unanswered.'),
+      allow_duplicate_name: z.boolean().optional().describe(ALLOW_DUPLICATE_NAME_DESC),
     },
     async ({ poll_id, respondent_name, edit_token, slot_votes, allow_duplicate_name }) => {
       const result = await client.respond(poll_id, {
@@ -138,25 +198,26 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
 
   server.tool(
     'vote_poll',
-    'Vote yes/no on poll options. Call read_poll first to get slot ids.',
+    [
+      'Alias of poll_respond for clients using these parameter names: `name` for the display name, and `votes` (or `options`) for the slot votes.',
+      'Prefer poll_respond. Identical behaviour, identical edit_token, identical identity rules.',
+    ].join('\n'),
     {
-      poll_id: z.string().describe('Public poll ID'),
-      name: z.string().describe('Voter display name'),
+      poll_id: z.string().describe(POLL_ID_DESC),
+      name: z.string().describe('Display name for this person, shown to everyone who can see the results'),
       votes: z
         .array(voteEntrySchema)
         .optional()
-        .describe('Yes/no votes per slot (alias: options)'),
+        .describe('The slot votes. Same thing as `options` — send one or the other, not both.'),
       options: z
         .array(voteEntrySchema)
         .optional()
-        .describe('Yes/no votes per slot (alias: votes)'),
-      edit_token: z.string().optional().describe('Existing edit token to update a prior response'),
-      allow_duplicate_name: z
-        .boolean()
+        .describe('The slot votes. Same thing as `votes` — send one or the other, not both.'),
+      edit_token: z
+        .string()
         .optional()
-        .describe(
-          'Voting without an edit_token under a name already on the poll fails with code "duplicate_name", because it would count that person twice. Set true only to add a genuinely different person with the same name.'
-        ),
+        .describe('The edit_token from this person’s earlier response, to change it'),
+      allow_duplicate_name: z.boolean().optional().describe(ALLOW_DUPLICATE_NAME_DESC),
     },
     async (args) => {
       const slotVotes = resolveVoteEntries(args);
@@ -174,11 +235,16 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
 
   server.tool(
     'poll_set_decision',
-    'Organizer marks the chosen final time slot.',
+    [
+      'Mark one slot as the time that won. It shows at the top of the results page as the decision; every vote stays visible and the poll stays open to responses.',
+      'Reversible — call it again with a different slot_id. Requires the organizer secret. Fails if the poll is closed.',
+    ].join('\n'),
     {
-      poll_id: z.string().describe('Public poll ID'),
-      organizer_secret: z.string().describe('Organizer capability token from poll creation'),
-      slot_id: z.string().describe('Chosen slot ID'),
+      poll_id: z.string().describe(POLL_ID_DESC),
+      organizer_secret: z.string().describe(ORGANIZER_SECRET_DESC),
+      slot_id: z
+        .string()
+        .describe('The winning slot id, from poll_get. `ranked_slot_ids[0]` is the poll’s own pick.'),
     },
     async ({ poll_id, organizer_secret, slot_id }) => {
       const result = await client.setDecision(poll_id, organizer_secret, slot_id);
@@ -190,13 +256,36 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
 
   server.tool(
     'poll_close',
-    'Organizer closes the poll — no further responses accepted.',
+    [
+      'Stop a poll taking new or changed responses. Everything stays readable — results, votes, the decision — which makes this the safe way to finish with a poll.',
+      'There is no reopen call, so it is one-way. Requires the organizer secret. Reach for poll_delete only when the data itself should be destroyed.',
+    ].join('\n'),
     {
-      poll_id: z.string().describe('Public poll ID'),
-      organizer_secret: z.string().describe('Organizer capability token from poll creation'),
+      poll_id: z.string().describe(POLL_ID_DESC),
+      organizer_secret: z.string().describe(ORGANIZER_SECRET_DESC),
     },
     async ({ poll_id, organizer_secret }) => {
       const result = await client.closePoll(poll_id, organizer_secret);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    'poll_delete',
+    [
+      'Delete a poll for good. IRREVERSIBLE: the poll, its time slots, every respondent and every vote are erased. There is no undo, no restore call and no copy kept. Afterwards the API returns 404 for that poll, the poll and results pages say it was not found, and a custom slug frees up for somebody else to claim.',
+      '',
+      'Requires the organizer secret. The poll id alone is not enough, deliberately: the id IS the participant link, which every invitee holds, and deleting on it would let any of them destroy everyone’s votes.',
+      'To stop new responses but keep the results, use poll_close instead. Use this one when the data should actually go — a test poll, or a poll somebody wants erased.',
+    ].join('\n'),
+    {
+      poll_id: z.string().describe(POLL_ID_DESC),
+      organizer_secret: z.string().describe(ORGANIZER_SECRET_DESC),
+    },
+    async ({ poll_id, organizer_secret }) => {
+      const result = await client.deletePoll(poll_id, organizer_secret);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
