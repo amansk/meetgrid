@@ -65,7 +65,7 @@ export default `
       const found = parts.filter(function (p) { return p.type === 'timeZoneName'; })[0];
       const name = found ? found.value : '';
       if (!name || /^GMT/.test(name)) {
-        return String(tz).split('/').pop().replace(/_/g, ' ') + ' time';
+        return String(tz).split('/').pop().replace(/_/g, ' ') + ' Time';
       }
       return name.replace(/(Standard|Daylight|Summer) /g, '');
     } catch (_) {
