@@ -252,9 +252,11 @@ Set `MEETGRID_API_URL` to your worker URL (defaults to `http://127.0.0.1:8787`).
 
 | Tool | Description |
 |------|-------------|
-| `poll_create` | Create poll with explicit slots or date-range grid |
+| `poll_create` | Create poll with explicit slots or date-range grid; optional custom link via `slug`, `poll_id`, or `name` |
 | `poll_get` | Get public poll view by ID |
+| `read_poll` | Alias of `poll_get` — adds an `options` list (`id`, `label`, `yes_count`, `no_count`) for voting |
 | `poll_respond` | Submit or update Yes/No votes |
+| `vote_poll` | Alias of `poll_respond` — use `name` plus `votes` or `options` (`{ slot_id, yes }`); call `read_poll` first |
 | `poll_set_decision` | Organizer marks chosen slot |
 | `poll_close` | Organizer closes poll |
 
@@ -266,7 +268,7 @@ Meetgrid MCP matches the app’s **no-login** model: the `/mcp` endpoint is publ
 
 - **Create:** `poll_create` returns `organizer_secret` once in the response — save it; it is not retrievable later.
 - **Organizer actions:** pass `organizer_secret` to `poll_set_decision` and `poll_close`.
-- **Respond:** `poll_respond` returns an `edit_token` for the respondent to update their votes.
+- **Respond:** `poll_respond` / `vote_poll` returns an `edit_token` for the respondent to update their votes.
 
 Do not treat MCP as a private admin API — anyone who can reach `/mcp` can create polls and respond. Protect the endpoint at the network layer if you need restriction (not implemented in v0).
 
