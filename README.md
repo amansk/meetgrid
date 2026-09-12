@@ -85,6 +85,8 @@ Base URL: `https://your-worker.workers.dev` (or `http://localhost:8787` locally)
 | `POST` | `/api/polls/:id/decision` | Organizer: mark chosen slot |
 | `POST` | `/api/polls/:id/close` | Organizer: close poll |
 | `POST` | `/api/polls/:id/slots` | Organizer: add/remove slots |
+| `POST` | `/api/slots/generate` | Preview range-generated slots for create UI |
+| `*` | `/mcp` | MCP Streamable HTTP endpoint |
 
 Write endpoints are lightly rate-limited (30 requests / 60s per IP by default).
 
@@ -180,9 +182,37 @@ curl -s -X POST http://localhost:8787/api/polls/POLL_ID/close \
 
 ## MCP server
 
-The MCP server wraps the same HTTP API for AI agents (stdio transport).
+Meetgrid exposes MCP over **Streamable HTTP** at `/mcp` (same tools as the REST API). A stdio transport is also available for local CLI use.
 
-### Setup
+### Remote HTTP (recommended)
+
+Production endpoint:
+
+```
+https://meetgrid.amandeep.app/mcp
+```
+
+Local dev (after `npm run dev`):
+
+```
+http://localhost:8787/mcp
+```
+
+Add to `.cursor/mcp.json` (or Cursor Settings → MCP):
+
+```json
+{
+  "mcpServers": {
+    "meetgrid": {
+      "url": "https://meetgrid.amandeep.app/mcp"
+    }
+  }
+}
+```
+
+For local development, use `"url": "http://127.0.0.1:8787/mcp"`.
+
+### Stdio (optional)
 
 ```bash
 cd mcp
@@ -190,11 +220,7 @@ npm install
 npm run build
 ```
 
-Set `MEETGRID_API_URL` to your worker URL (defaults to `http://127.0.0.1:8787` for local dev).
-
-### Cursor MCP config
-
-Add to `.cursor/mcp.json` (or Cursor Settings → MCP):
+Set `MEETGRID_API_URL` to your worker URL (defaults to `http://127.0.0.1:8787`).
 
 ```json
 {
@@ -210,13 +236,11 @@ Add to `.cursor/mcp.json` (or Cursor Settings → MCP):
 }
 ```
 
-For production, set `MEETGRID_API_URL` to your deployed worker URL.
-
 ### MCP tools
 
 | Tool | Description |
 |------|-------------|
-| `poll_create` | Create poll with auto-generated slots |
+| `poll_create` | Create poll with explicit slots or date-range grid |
 | `poll_get` | Get public poll view by ID |
 | `poll_respond` | Submit or update Yes/No votes |
 | `poll_set_decision` | Organizer marks chosen slot |

@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import api from './routes/api';
+import mcp from './routes/mcp';
 import pages from './routes/pages';
 import type { Env } from './types';
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.route('/api', api);
+app.route('/', mcp);
 app.route('/', pages);
 
 app.notFound((c) => {
