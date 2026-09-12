@@ -31,7 +31,21 @@ export interface GoogleCalendarUrlOptions {
   ctz?: string;
 }
 
-/** Build a Google Calendar “template” URL for an absolute UTC instant. */
+/**
+ * Build a Google Calendar “template” URL for an absolute UTC instant.
+ *
+ * Google Calendar URL semantics (see add-event-to-calendar-docs / Google help):
+ * - `dates=YYYYMMDDTHHMMSSZ/…Z` — absolute UTC; Google displays in the viewer’s calendar TZ.
+ * - `dates=YYYYMMDDTHHMMSS/…` + `ctz=Area/City` — floating wall time in the named zone.
+ *
+ * Meetgrid slots are stored as UTC ISO (`start_utc` / `end_utc`). We use the **Z form
+ * without `ctz`**, matching ICS (DTSTART/DTEND Z). Production smoke (post-#5) showed the
+ * broken shape `dates=…Z&ctz=America/Los_Angeles`, which can mis-shift the event.
+ *
+ * Alternative (not used): convert UTC → poll-local floating times and pass `ctz=poll.timezone`.
+ * That preserves wall-clock in the poll zone but adds DST conversion complexity; Z-only is
+ * unambiguous for a single global instant.
+ */
 export function googleCalendarUrl(opts: GoogleCalendarUrlOptions): string {
   const start = utcToIcsDate(opts.startUtc);
   const end = utcToIcsDate(opts.endUtc);
@@ -41,8 +55,6 @@ export function googleCalendarUrl(opts: GoogleCalendarUrlOptions): string {
     dates: `${start}/${end}`,
     details: opts.details || '',
   });
-  // Google treats Z-suffixed dates as UTC; ctz applies only to floating (non-Z) dates.
-  // Passing both can mis-shift the event for viewers in other zones.
   const usesUtcSuffix = start.endsWith('Z') && end.endsWith('Z');
   if (opts.ctz && !usesUtcSuffix) {
     params.set('ctz', opts.ctz);

@@ -59,6 +59,23 @@ assert(gcal.includes('dates=20250615T183000Z%2F20250615T193000Z'), 'GCal dates a
 assert(!gcal.includes('ctz='), 'GCal omits ctz when dates use Z (no double-shift)');
 assert(gcal.includes('text=%3Cscript%3E'), 'GCal title URL-encoded (XSS-safe in href)');
 
+// Production smoke (meetgrid.amandeep.app, post-#5): broken URL had both Z dates and ctz.
+const prodStart = '2026-09-15T17:00:00.000Z';
+const prodEnd = '2026-09-15T17:30:00.000Z';
+const prodGcal = googleCalendarUrl({
+  title: 'Smoke poll',
+  startUtc: prodStart,
+  endUtc: prodEnd,
+  ctz: 'America/Los_Angeles',
+});
+assert(
+  prodGcal.includes('dates=20260915T170000Z%2F20260915T173000Z'),
+  'production-shaped GCal dates compact to UTC Z'
+);
+assert(!prodGcal.includes('ctz='), 'production bug fixed: no ctz with Z dates');
+
+assert(ics.includes('\r\n'), 'ICS uses CRLF line endings');
+
 assert(icsFilenameStem('Team Sync!!!') === 'Team-Sync', 'ics filename stem sanitizes title');
 assert(icsFilenameStem('!!!') === 'event', 'ics filename stem fallback');
 
