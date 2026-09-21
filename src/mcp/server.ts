@@ -57,7 +57,7 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
       '2. The range generator — `start_date`, `end_date`, `daily_start`, `daily_end` and `duration_minutes` together, which fills the same daily window on every date with back-to-back slots. Only worth it when every day really does have the same window.',
       'Supplying neither fails. `slots` wins if you supply both. `title` and `timezone` are always required.',
       '',
-      'Returns poll_id, poll_url (the link for participants), results_url (public), organizer_url and organizer_secret. That secret is a capability token granting full control of the poll, deletion included — keep it for the organizer calls and do not paste it into anything participants can read.',
+      'Returns poll_id, poll_url (the link for participants), results_url (public), organizer_url (the admin link) and organizer_secret. Pass `email` to also email the organizer their admin link; `email_status` then says whether it went (sent, not_configured or failed), and the poll is created either way. That secret is a capability token granting full control of the poll, deletion included — keep it for the organizer calls and do not paste it into anything participants can read.',
     ].join('\n'),
     {
       title: z
@@ -67,6 +67,12 @@ export function createMeetgridMcpServer(apiBaseUrl: string, fetcher?: Fetcher): 
         .string()
         .optional()
         .describe('Free text under the title, for context participants need before they answer'),
+      email: z
+        .string()
+        .optional()
+        .describe(
+          "The organizer's email address. The admin link (organizer_url) is emailed there so it is not lost. Not stored, and never shown to participants."
+        ),
       timezone: z
         .string()
         .describe(

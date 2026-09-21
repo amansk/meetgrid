@@ -21,6 +21,7 @@ import {
   resolveCreatePollId,
 } from '../lib/validate';
 import { generateId, generateSecret, hashSecret, verifySecret } from '../lib/crypto';
+import { parseEmail, sendAdminLinkEmail, type EmailStatus } from '../lib/email';
 import { generateUniquePollId } from '../lib/expiry';
 import { buildPollView } from '../lib/poll-view';
 import { clientKey, checkRateLimit } from '../lib/rate-limit';
@@ -106,6 +107,12 @@ api.post('/polls', async (c) => {
   if (!title?.trim()) return jsonError('title is required');
   if (!timezone || !isValidTimezone(timezone)) return jsonError('Valid timezone is required');
 
+  let email: string | null = null;
+  if (body.email?.trim()) {
+    email = parseEmail(body.email);
+    if (!email) return jsonError('email is not a valid address');
+  }
+
   let slots: GeneratedSlot[];
   try {
     slots = resolveCreateSlots(body);
@@ -153,13 +160,28 @@ api.post('/polls', async (c) => {
   await insertSlots(c.env.DB, pollId, slots);
 
   const origin = new URL(c.req.url).origin;
+  const pollUrl = `${origin}/p/${pollId}`;
+  const organizerUrl = `${origin}/p/${pollId}/results?secret=${encodeURIComponent(organizerSecret)}`;
+
+  // The poll exists at this point whatever happens to the email.
+  let emailStatus: EmailStatus | undefined;
+  if (email) {
+    emailStatus = await sendAdminLinkEmail(c.env, {
+      to: email,
+      title: title.trim(),
+      pollUrl,
+      organizerUrl,
+    });
+  }
+
   return c.json({
     poll_id: pollId,
     organizer_secret: organizerSecret,
-    poll_url: `${origin}/p/${pollId}`,
+    poll_url: pollUrl,
     results_url: `${origin}/p/${pollId}/results`,
-    organizer_url: `${origin}/p/${pollId}/results?secret=${encodeURIComponent(organizerSecret)}`,
+    organizer_url: organizerUrl,
     slot_count: slots.length,
+    ...(email ? { email_status: emailStatus } : {}),
   });
 });
 

@@ -2,6 +2,11 @@ export interface Env {
   DB: D1Database;
   RATE_LIMIT_WINDOW_SECONDS?: string;
   RATE_LIMIT_MAX_WRITES?: string;
+  /** SendGrid key for emailing organizers their admin link. Unset = no email. */
+  SENDGRID_API_KEY?: string;
+  /** Verified SendGrid sender address. Unset = no email. */
+  SENDGRID_FROM_EMAIL?: string;
+  SENDGRID_FROM_NAME?: string;
 }
 
 export type PollStatus = 'open' | 'closed';
@@ -52,6 +57,8 @@ export interface ExplicitSlotInput {
 export interface CreatePollBody {
   title: string;
   notes?: string;
+  /** Organizer's address; the admin link is emailed here. Not stored. */
+  email?: string;
   /** Optional custom poll URL segment (aliases: slug, name). Random ID when omitted. */
   poll_id?: string;
   slug?: string;

@@ -58,6 +58,10 @@ pages.get('/', (c) => {
     <label for="notes">Notes <span class="link-muted">(optional)</span></label>
     <textarea id="notes" name="notes" placeholder="Any context for respondents"></textarea>
 
+    <label for="email">Your email <span class="link-muted">(optional)</span></label>
+    <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email">
+    <p class="link-muted" style="margin:0 0 0.5rem">We'll email you the admin link so you don't lose it. Not stored.</p>
+
     <label for="custom_slug">Custom link <span class="link-muted">(optional)</span></label>
     <input type="text" id="custom_slug" name="custom_slug" placeholder="team-sync" autocomplete="off" spellcheck="false">
     <p class="link-muted slug-preview" id="slug-preview">Leave blank for a random link like …/p/xK9mP2nQ4vLr</p>
@@ -113,6 +117,7 @@ pages.get('/', (c) => {
 
   <div id="success" class="hidden">
     <div class="alert success">Poll created! Share the link below.</div>
+    <div id="email-note" class="alert hidden"></div>
     <div class="section-title">Share with respondents</div>
     <div class="copy-row">
       <input type="text" id="poll-url" readonly>
@@ -286,6 +291,7 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
   const body = {
     title: document.getElementById('title').value,
     notes: document.getElementById('notes').value || undefined,
+    email: document.getElementById('email').value.trim() || undefined,
     slug: customSlug || undefined,
     timezone: document.getElementById('timezone').value,
     slots: manualSlots.map(s => ({ date: s.date, start_time: s.start_time, duration_minutes: s.duration_minutes })),
@@ -303,6 +309,15 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
     document.getElementById('go-respond').href = data.poll_url;
     document.getElementById('go-results').href = data.organizer_url;
     localStorage.setItem('meetgrid_secret_' + data.poll_id, data.organizer_secret);
+    if (data.email_status) {
+      const note = document.getElementById('email-note');
+      const sent = data.email_status === 'sent';
+      note.textContent = sent
+        ? 'We emailed the admin link to ' + body.email + '.'
+        : "We couldn't email the admin link, so copy it from below before leaving this page.";
+      note.classList.add(sent ? 'info' : 'error');
+      note.classList.remove('hidden');
+    }
   } catch (err) {
     showError(err.message);
     btn.disabled = false;

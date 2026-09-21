@@ -29,10 +29,14 @@ const server = new McpServer({
 
 server.tool(
   'poll_create',
-  'Create a Meetgrid poll. Prefer explicit slots array; range fields are optional fallback for grid generation.',
+  'Create a Meetgrid poll. Prefer explicit slots array; range fields are optional fallback for grid generation. Returns organizer_url (the admin link); pass email to also email it to the organizer.',
   {
     title: z.string().describe('Poll title'),
     notes: z.string().optional().describe('Optional notes for respondents'),
+    email: z
+      .string()
+      .optional()
+      .describe("Organizer's email; the admin link is emailed there. Not stored."),
     timezone: z.string().describe('IANA timezone, e.g. America/Los_Angeles'),
     slots: z
       .array(explicitSlotSchema)
