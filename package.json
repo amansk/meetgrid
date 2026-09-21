@@ -12,7 +12,8 @@
     "test:dst": "npx --yes tsx scripts/test-dst.ts",
     "test:expiry": "npx --yes tsx scripts/test-expiry.ts",
     "test:calendar": "npx --yes tsx scripts/test-calendar.ts",
-    "test": "npm run test:dst && npm run test:calendar",
+    "test:email": "npx --yes tsx scripts/test-email.ts",
+    "test": "npm run test:dst && npm run test:calendar && npm run test:email",
     "mcp:build": "npm run build --prefix mcp",
     "mcp:start": "node mcp/dist/index.js"
   },

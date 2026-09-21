@@ -34,6 +34,7 @@ export class MeetgridClient {
   createPoll(body: {
     title: string;
     notes?: string;
+    email?: string;
     slug?: string;
     poll_id?: string;
     name?: string;

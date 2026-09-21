@@ -56,6 +56,18 @@ npm run db:migrate:remote
 npm run deploy
 ```
 
+### Emailing organizers their admin link (optional)
+
+When a poll is created with an `email`, Meetgrid sends that address the admin link through [SendGrid](https://sendgrid.com/). Set a SendGrid API key with Mail Send permission and a verified sender:
+
+```bash
+npx wrangler secret put SENDGRID_API_KEY
+npx wrangler secret put SENDGRID_FROM_EMAIL   # or add it under [vars] in wrangler.toml
+# optional: SENDGRID_FROM_NAME, e.g. "Meetgrid"
+```
+
+For local dev, put the same keys in `.dev.vars`. With either one unset, no email is sent and poll creation works exactly as before; the response's `email_status` reads `not_configured`. A SendGrid error reads `failed` and is logged, and the poll is still created. The address is not stored.
+
 ## Project layout
 
 ```
@@ -125,7 +137,7 @@ curl -s -X POST http://localhost:8787/api/polls \
   }'
 ```
 
-Save `poll_id`, `organizer_secret`, and `poll_url` from the response. Optionally set a custom link with `"slug": "team-sync"` (or `"poll_id"` / `"name"`) — lowercase letters, digits, and hyphens, 3–48 chars; returns 409 if taken.
+Save `poll_id`, `organizer_secret`, and `poll_url` from the response. `organizer_url` is the admin link (results page with the secret). Add `"email": "you@example.com"` to have the admin link emailed to you; the response then includes `email_status` (`sent`, `not_configured` or `failed`). Optionally set a custom link with `"slug": "team-sync"` (or `"poll_id"` / `"name"`) — lowercase letters, digits, and hyphens, 3–48 chars; returns 409 if taken.
 
 ```bash
 curl -s -X POST http://localhost:8787/api/polls \
