@@ -46,6 +46,7 @@ async function run(): Promise<void> {
     (call?.init.headers as Record<string, string>)?.Authorization === 'Bearer re_test',
     'authenticates with the API key'
   );
+  assert(call?.init.redirect === 'error', 'refuses to follow redirects');
   const payload = JSON.parse(String(call?.init.body));
   assert(payload.to.length === 1 && payload.to[0] === msg.to, 'addressed to the organizer');
   assert(payload.from === 'polls@example.com', 'sent from the configured sender');

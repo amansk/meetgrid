@@ -92,6 +92,9 @@ export async function sendAdminLinkEmail(
   const send = () =>
     fetcher(RESEND_URL, {
       method: 'POST',
+      // A followed redirect would forward the API key and the admin link to
+      // wherever it points; fail instead.
+      redirect: 'error',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
