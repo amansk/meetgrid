@@ -74,6 +74,35 @@ async function run(): Promise<void> {
   const rejected: EmailFetcher = async () => new Response('{"name":"validation_error"}', { status: 403 });
   assert((await sendAdminLinkEmail(env, msg, rejected)) === 'failed', 'non-2xx is failed');
 
+  const noSleep = async () => {};
+  const keys: string[] = [];
+  let attempts = 0;
+  const throttledOnce: EmailFetcher = async (_url, init) => {
+    keys.push((init.headers as Record<string, string>)['Idempotency-Key']);
+    attempts++;
+    return attempts === 1
+      ? new Response('rate limited', { status: 429, headers: { 'retry-after': '1' } })
+      : new Response('{"id":"e2"}', { status: 200 });
+  };
+  assert((await sendAdminLinkEmail(env, msg, throttledOnce, noSleep)) === 'sent', 'a 429 is retried once');
+  assert(attempts === 2 && !!keys[0] && keys[0] === keys[1], 'the retry reuses the idempotency key');
+
+  let throttledCalls = 0;
+  const alwaysThrottled: EmailFetcher = async () => {
+    throttledCalls++;
+    return new Response('rate limited', { status: 429 });
+  };
+  assert((await sendAdminLinkEmail(env, msg, alwaysThrottled, noSleep)) === 'failed', 'a second 429 is failed');
+  assert(throttledCalls === 2, 'retries at most once');
+
+  let longWaitCalls = 0;
+  const longWait: EmailFetcher = async () => {
+    longWaitCalls++;
+    return new Response('rate limited', { status: 429, headers: { 'retry-after': '60' } });
+  };
+  assert((await sendAdminLinkEmail(env, msg, longWait, noSleep)) === 'failed', 'a long retry-after is failed');
+  assert(longWaitCalls === 1, 'does not hold the request for a long retry-after');
+
   const down: EmailFetcher = async () => {
     throw new Error('network down');
   };
