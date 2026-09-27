@@ -68,6 +68,8 @@ npx wrangler secret put RESEND_FROM_EMAIL   # or add it under [vars] in wrangler
 
 For local dev, put the same keys in `.dev.vars`. With either one unset, no email is sent and poll creation works exactly as before; the response's `email_status` reads `not_configured`. A Resend error reads `failed` and is logged, and the poll is still created. The address is not stored.
 
+Leave click tracking off for the sending domain in Resend (it is off by default). The admin link carries the organizer secret, and click tracking would route it through a redirect.
+
 ## Project layout
 
 ```
