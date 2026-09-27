@@ -1,5 +1,5 @@
 /**
- * Admin-link email: what goes to SendGrid, and that every way it can go wrong
+ * Admin-link email: what goes to Resend, and that every way it can go wrong
  * comes back as a status rather than an exception that would fail poll creation.
  */
 import { buildAdminLinkEmail, parseEmail, sendAdminLinkEmail, type EmailFetcher } from '../src/lib/email';
@@ -14,7 +14,7 @@ function assert(condition: boolean, message: string): void {
   }
 }
 
-const env = { SENDGRID_API_KEY: 'SG.test', SENDGRID_FROM_EMAIL: 'polls@example.com' } as Env;
+const env = { RESEND_API_KEY: 're_test', RESEND_FROM_EMAIL: 'polls@example.com' } as Env;
 const msg = {
   to: 'organizer@example.com',
   title: 'Team <sync> & "lunch"',
@@ -37,37 +37,75 @@ async function run(): Promise<void> {
   let captured: { url: string; init: RequestInit } | null = null;
   const ok: EmailFetcher = async (url, init) => {
     captured = { url, init };
-    return new Response(null, { status: 202 });
+    return new Response('{"id":"e1"}', { status: 200 });
   };
-  assert((await sendAdminLinkEmail(env, msg, ok)) === 'sent', '202 from SendGrid is sent');
+  assert((await sendAdminLinkEmail(env, msg, ok)) === 'sent', '200 from Resend is sent');
   const call = captured as { url: string; init: RequestInit } | null;
-  assert(call?.url === 'https://api.sendgrid.com/v3/mail/send', 'posts to the SendGrid v3 endpoint');
+  assert(call?.url === 'https://api.resend.com/emails', 'posts to the Resend emails endpoint');
   assert(
-    (call?.init.headers as Record<string, string>)?.Authorization === 'Bearer SG.test',
+    (call?.init.headers as Record<string, string>)?.Authorization === 'Bearer re_test',
     'authenticates with the API key'
   );
+  assert(call?.init.redirect === 'error', 'refuses to follow redirects');
   const payload = JSON.parse(String(call?.init.body));
-  assert(payload.personalizations[0].to[0].email === msg.to, 'addressed to the organizer');
-  assert(payload.from.email === 'polls@example.com', 'sent from the configured sender');
-  assert(payload.tracking_settings.click_tracking.enable === false, 'click tracking is off');
+  assert(payload.to.length === 1 && payload.to[0] === msg.to, 'addressed to the organizer');
+  assert(payload.from === 'polls@example.com', 'sent from the configured sender');
+  assert(payload.subject === built.subject, 'carries the subject');
+  assert(payload.text === built.text && payload.html === built.html, 'carries text and html bodies');
+
+  await sendAdminLinkEmail({ ...env, RESEND_FROM_NAME: 'Meet"grid' } as Env, msg, ok);
+  const named = JSON.parse(String((captured as { init: RequestInit } | null)?.init.body));
+  assert(named.from === '"Meetgrid" <polls@example.com>', 'display name is quoted and sanitised');
+
+  const multiline = buildAdminLinkEmail({ ...msg, title: 'Line one\r\nLine two' });
+  assert(multiline.subject === 'Your Meetgrid poll: Line one Line two', 'subject has no line breaks');
 
   let called = false;
   const spy: EmailFetcher = async () => {
     called = true;
-    return new Response(null, { status: 202 });
+    return new Response(null, { status: 200 });
   };
   assert(
-    (await sendAdminLinkEmail({ SENDGRID_FROM_EMAIL: 'x@y.co' } as Env, msg, spy)) === 'not_configured',
+    (await sendAdminLinkEmail({ RESEND_FROM_EMAIL: 'x@y.co' } as Env, msg, spy)) === 'not_configured',
     'missing key is not_configured'
   );
   assert(
-    (await sendAdminLinkEmail({ SENDGRID_API_KEY: 'k' } as Env, msg, spy)) === 'not_configured',
+    (await sendAdminLinkEmail({ RESEND_API_KEY: 'k' } as Env, msg, spy)) === 'not_configured',
     'missing sender is not_configured'
   );
   assert(!called, 'nothing is sent when unconfigured');
 
-  const rejected: EmailFetcher = async () => new Response('bad sender', { status: 403 });
+  const rejected: EmailFetcher = async () => new Response('{"name":"validation_error"}', { status: 403 });
   assert((await sendAdminLinkEmail(env, msg, rejected)) === 'failed', 'non-2xx is failed');
+
+  const noSleep = async () => {};
+  const keys: string[] = [];
+  let attempts = 0;
+  const throttledOnce: EmailFetcher = async (_url, init) => {
+    keys.push((init.headers as Record<string, string>)['Idempotency-Key']);
+    attempts++;
+    return attempts === 1
+      ? new Response('rate limited', { status: 429, headers: { 'retry-after': '1' } })
+      : new Response('{"id":"e2"}', { status: 200 });
+  };
+  assert((await sendAdminLinkEmail(env, msg, throttledOnce, noSleep)) === 'sent', 'a 429 is retried once');
+  assert(attempts === 2 && !!keys[0] && keys[0] === keys[1], 'the retry reuses the idempotency key');
+
+  let throttledCalls = 0;
+  const alwaysThrottled: EmailFetcher = async () => {
+    throttledCalls++;
+    return new Response('rate limited', { status: 429 });
+  };
+  assert((await sendAdminLinkEmail(env, msg, alwaysThrottled, noSleep)) === 'failed', 'a second 429 is failed');
+  assert(throttledCalls === 2, 'retries at most once');
+
+  let longWaitCalls = 0;
+  const longWait: EmailFetcher = async () => {
+    longWaitCalls++;
+    return new Response('rate limited', { status: 429, headers: { 'retry-after': '60' } });
+  };
+  assert((await sendAdminLinkEmail(env, msg, longWait, noSleep)) === 'failed', 'a long retry-after is failed');
+  assert(longWaitCalls === 1, 'does not hold the request for a long retry-after');
 
   const down: EmailFetcher = async () => {
     throw new Error('network down');
