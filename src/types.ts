@@ -2,11 +2,12 @@ export interface Env {
   DB: D1Database;
   RATE_LIMIT_WINDOW_SECONDS?: string;
   RATE_LIMIT_MAX_WRITES?: string;
-  /** SendGrid key for emailing organizers their admin link. Unset = no email. */
-  SENDGRID_API_KEY?: string;
-  /** Verified SendGrid sender address. Unset = no email. */
-  SENDGRID_FROM_EMAIL?: string;
-  SENDGRID_FROM_NAME?: string;
+  /** Resend API key for emailing organizers their admin link. Unset = no email. */
+  RESEND_API_KEY?: string;
+  /** Sender address on a domain verified in Resend. Unset = no email. */
+  RESEND_FROM_EMAIL?: string;
+  /** Optional sender display name, e.g. "Meetgrid". */
+  RESEND_FROM_NAME?: string;
 }
 
 export type PollStatus = 'open' | 'closed';

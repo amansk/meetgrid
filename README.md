@@ -58,15 +58,15 @@ npm run deploy
 
 ### Emailing organizers their admin link (optional)
 
-When a poll is created with an `email`, Meetgrid sends that address the admin link through [SendGrid](https://sendgrid.com/). Set a SendGrid API key with Mail Send permission and a verified sender:
+When a poll is created with an `email`, Meetgrid sends that address the admin link through [Resend](https://resend.com/). Set a Resend API key with sending access and a sender address on a domain you've verified in Resend:
 
 ```bash
-npx wrangler secret put SENDGRID_API_KEY
-npx wrangler secret put SENDGRID_FROM_EMAIL   # or add it under [vars] in wrangler.toml
-# optional: SENDGRID_FROM_NAME, e.g. "Meetgrid"
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put RESEND_FROM_EMAIL   # or add it under [vars] in wrangler.toml
+# optional: RESEND_FROM_NAME, e.g. "Meetgrid"
 ```
 
-For local dev, put the same keys in `.dev.vars`. With either one unset, no email is sent and poll creation works exactly as before; the response's `email_status` reads `not_configured`. A SendGrid error reads `failed` and is logged, and the poll is still created. The address is not stored.
+For local dev, put the same keys in `.dev.vars`. With either one unset, no email is sent and poll creation works exactly as before; the response's `email_status` reads `not_configured`. A Resend error reads `failed` and is logged, and the poll is still created. The address is not stored.
 
 ## Project layout
 
