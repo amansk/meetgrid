@@ -57,6 +57,9 @@ async function run(): Promise<void> {
   const named = JSON.parse(String((captured as { init: RequestInit } | null)?.init.body));
   assert(named.from === '"Meetgrid" <polls@example.com>', 'display name is quoted and sanitised');
 
+  const multiline = buildAdminLinkEmail({ ...msg, title: 'Line one\r\nLine two' });
+  assert(multiline.subject === 'Your Meetgrid poll: Line one Line two', 'subject has no line breaks');
+
   let called = false;
   const spy: EmailFetcher = async () => {
     called = true;

@@ -52,7 +52,8 @@ export interface AdminLinkEmail {
 }
 
 export function buildAdminLinkEmail(msg: AdminLinkEmail): { subject: string; text: string; html: string } {
-  const subject = `Your Meetgrid poll: ${msg.title}`;
+  // A line break in the title would make Resend reject the subject header.
+  const subject = `Your Meetgrid poll: ${msg.title.replace(/\s+/g, ' ').trim()}`;
   const text = [
     `Your poll "${msg.title}" is ready.`,
     '',
@@ -118,6 +119,8 @@ export async function sendAdminLinkEmail(
     // throttle an organizer who did nothing wrong. Wait it out once.
     const delay = res.status === 429 ? retryDelayMs(res) : null;
     if (delay !== null) {
+      // Release the throttled response before reusing the connection.
+      await res.body?.cancel();
       await sleep(delay);
       res = await send();
     }
